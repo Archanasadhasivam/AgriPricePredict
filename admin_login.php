@@ -1,6 +1,6 @@
 <?php
 session_start();
-include 'db_connect.php'; // Should create $conn = new mysqli(...)
+include 'db_connect.php'; // This file should create $conn = new mysqli(...)
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax'])) {
     header('Content-Type: application/json');
@@ -17,6 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax'])) {
     }
 
     // Check in Admin Table
+    // Ensure 'id', 'email', 'password' columns exist in your 'admin' table
     $stmt = $conn->prepare("SELECT id, email, password FROM admin WHERE email = ?");
     $stmt->bind_param("s", $email);
     $stmt->execute();
@@ -26,31 +27,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax'])) {
         $admin = $result->fetch_assoc();
         $stored_password = $admin['password'];
 
-        // Check if password is hashed (bcrypt starts with $2y$)
-        if (substr($stored_password, 0, 4) === '$2y$') {
-            // Hashed password, verify using password_verify
-            if (password_verify($password, $stored_password)) {
-                $_SESSION['admin_id'] = $admin['id'];
-                $_SESSION['admin_email'] = $admin['email'];
+        // IMPORTANT: Always use password_verify for hashed passwords.
+        // The check for plain text password is a security risk and should be removed once all passwords are hashed.
+        if (password_verify($password, $stored_password)) {
+            $_SESSION['admin_id'] = $admin['id'];
+            $_SESSION['admin_email'] = $admin['email'];
+            $_SESSION['is_admin'] = true; // Add a flag to indicate admin login
 
-                $response['status'] = 'success';
-                $response['redirect'] = 'admin.php';
-            } else {
-                $response['status'] = 'error';
-                $response['message'] = 'Incorrect password!';
-            }
+            $response['status'] = 'success';
+            $response['redirect'] = 'admin_dashboard.php'; // Redirect to the admin dashboard
         } else {
-            // Plain text password stored (not secure!)
-            if ($password === $stored_password) {
-                $_SESSION['admin_id'] = $admin['id'];
-                $_SESSION['admin_email'] = $admin['email'];
-
-                $response['status'] = 'success';
-                $response['redirect'] = 'admin.php';
-            } else {
-                $response['status'] = 'error';
-                $response['message'] = 'Incorrect password!';
-            }
+            $response['status'] = 'error';
+            $response['message'] = 'Incorrect password!';
         }
     } else {
         $response['status'] = 'error';
@@ -58,7 +46,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && isset($_POST['ajax'])) {
     }
 
     $stmt->close();
-    $conn->close();
+    $conn->close(); // Close connection after use
     echo json_encode($response);
     exit();
 }
