@@ -6,6 +6,36 @@ if (!isset($_SESSION['user_email'])) {
     header("Location: login.php"); // Redirect to login if not logged in
     exit();
 }
+
+// Include database connection (assuming you have db_connect.php)
+include('db_connect.php');
+
+// Fetch user information (optional, but good for displaying personalized content)
+$user_email = $_SESSION['user_email'];
+$stmt = $conn->prepare("SELECT id, username FROM users WHERE email = ?");
+$stmt->bind_param("s", $user_email);
+$stmt->execute();
+$result = $stmt->get_result();
+$user = $result->fetch_assoc();
+$stmt->close();
+
+// You can fetch other relevant data for the dashboard here,
+// such as price alerts set by the user.
+$alerts = [];
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
+    $fetchStmt = $conn->prepare("SELECT id, product_name, alert_price FROM price_alerts WHERE user_id = ?");
+    $fetchStmt->bind_param("i", $user_id);
+    $fetchStmt->execute();
+    $alertsResult = $fetchStmt->get_result();
+    while ($row = $alertsResult->fetch_assoc()) {
+        $alerts[] = $row;
+    }
+    $fetchStmt->close();
+}
+
+// Close the database connection if it's no longer needed
+// $conn->close();
 ?>
 
 <!DOCTYPE html>
