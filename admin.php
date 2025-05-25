@@ -2,13 +2,14 @@
 // Start session
 session_start();
 
-// DB connection
-$host = "localhost";
-$user = "root";
-$password = "";
-$dbname = "price_prediction";
+// DB connection - Use the Aiven connection details
+$host = "mysql-fc0e3b0-sadhasivamkanaga15-f154.l.aivencloud.com";
+$port = 21436;
+$user = "avnadmin";
+$password = "AVNS_P2X1P7jH__WuLtv9YSs"; // IMPORTANT: Replace with your actual Aiven password!
+$dbname = "defaultdb";
 
-$conn = new mysqli($host, $user, $password, $dbname);
+$conn = new mysqli($host, $user, $password, $dbname, $port);
 
 // Check connection
 if ($conn->connect_error) {
@@ -18,8 +19,23 @@ if ($conn->connect_error) {
 // Handle delete request
 if (isset($_GET['delete_id'])) {
     $deleteId = intval($_GET['delete_id']);
-    $deleteQuery = "DELETE FROM users WHERE id = $deleteId";
-    $conn->query($deleteQuery);
+    $deleteQuery = "DELETE FROM users WHERE id = ?";
+    $stmt = $conn->prepare($deleteQuery);
+    $stmt->bind_param("i", $deleteId);
+    $stmt->execute();
+
+    if ($stmt->affected_rows > 0) {
+        // Optionally, set a success message
+        $_SESSION['message'] = "User deleted successfully.";
+        $_SESSION['message_type'] = 'success';
+    } else {
+        // Optionally, set an error message
+        $_SESSION['message'] = "Error deleting user.";
+        $_SESSION['message_type'] = 'danger';
+    }
+    $stmt->close();
+    header("Location: admin_dashboard.php"); // Redirect back to the admin dashboard
+    exit();
 }
 
 // Fetch all users
