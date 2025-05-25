@@ -2,33 +2,40 @@
 session_start();
 include("db_connect.php");
 
+$error = ""; // Initialize error message
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $username = $_POST['username'];
     $email = $_POST['email'];
     $password = $_POST['password'];
 
-    // Check if email is already registered
-    $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
-    $stmt->bind_param("s", $email);
-    $stmt->execute();
-    $stmt->store_result();
-
-    if ($stmt->num_rows > 0) {
-        $error = "Email is already registered. Please use a different email.";
+    if (empty($username) || empty($email) || empty($password)) {
+        $error = "All fields are required.";
     } else {
-        // Hash the password for security
-        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-        $stmt = $conn->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
-        $stmt->bind_param("sss", $username, $email, $hashed_password);
+        // Check if email is already registered
+        $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+        $stmt->bind_param("s", $email);
+        $stmt->execute();
+        $stmt->store_result();
 
-        if ($stmt->execute()) {
-            header("Location: login.php");
-            exit();
+        if ($stmt->num_rows > 0) {
+            $error = "Email is already registered. Please use a different email.";
         } else {
-            $error = "Error in registration. Please try again.";
+            // Hash the password for security
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $conn->prepare("INSERT INTO users (username, email, password) VALUES (?, ?, ?)");
+            $stmt->bind_param("sss", $username, $email, $hashed_password);
+
+            if ($stmt->execute()) {
+                $_SESSION['registration_success'] = "Registration successful! You can now log in.";
+                header("Location: login.php");
+                exit();
+            } else {
+                $error = "Error in registration. Please try again.";
+            }
         }
+        $stmt->close();
     }
-    $stmt->close();
     $conn->close();
 }
 ?>
