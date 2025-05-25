@@ -19,29 +19,30 @@ if ($conn->connect_error) {
 // Handle delete request
 if (isset($_GET['delete_id'])) {
     $deleteId = intval($_GET['delete_id']);
-    $deleteQuery = "DELETE FROM users WHERE id = ?";
+    $deleteQuery = "DELETE FROM admin WHERE id = ?"; // Changed table name to 'admin'
     $stmt = $conn->prepare($deleteQuery);
     $stmt->bind_param("i", $deleteId);
     $stmt->execute();
 
     if ($stmt->affected_rows > 0) {
         // Optionally, set a success message
-        $_SESSION['message'] = "User deleted successfully.";
+        $_SESSION['message'] = "Admin user deleted successfully.";
         $_SESSION['message_type'] = 'success';
     } else {
         // Optionally, set an error message
-        $_SESSION['message'] = "Error deleting user.";
+        $_SESSION['message'] = "Error deleting admin user.";
         $_SESSION['message_type'] = 'danger';
     }
     $stmt->close();
-    header("Location: admin_dashboard.php"); // Redirect back to the admin dashboard
+    header("Location: admin_dashboard.php"); // Redirect back to the admin dashboard (adjust if needed)
     exit();
 }
 
-// Fetch all users
-$userQuery = "SELECT id, username, email FROM users";
+// Fetch all admin users
+$userQuery = "SELECT id, username, email FROM admin"; // Changed table name to 'admin'
 $result = $conn->query($userQuery);
 ?>
+
 
 <!DOCTYPE html>
 <html>
