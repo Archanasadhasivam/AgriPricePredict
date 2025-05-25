@@ -6,7 +6,7 @@ if (!isset($_SESSION['user_email']) || !isset($_SESSION['user_id'])) {
     exit();
 }
 
-include("db.php"); // DB connection
+include("db_connect.php"); // Ensure this uses your Aiven connection
 
 $user_id = $_SESSION['user_id'];
 
