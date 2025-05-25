@@ -1,9 +1,80 @@
 <?php
 session_start();
+
+// Redirect to login if user is not authenticated
 if (!isset($_SESSION['user_email'])) {
     header("Location: login.php");
     exit();
 }
+
+// Include database connection (assuming db_connect.php exists and is configured for Aiven)
+include('db_connect.php');
+
+$user_email = $_SESSION['user_email'];
+
+// Optional: Fetch user information for personalization
+$username = 'User';
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
+    $stmt = $conn->prepare("SELECT username FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        $username = htmlspecialchars($row['username']);
+    }
+    $stmt->close();
+}
+
+$prediction_result = null;
+$error_message = null;
+$products = [];
+
+// Fetch list of all unique products for the dropdown (from historical_prices table)
+$productQuery = "SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC";
+$productResult = $conn->query($productQuery);
+while ($row = $productResult->fetch_assoc()) {
+    $products[] = $row['product_name'];
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    $product_name = isset($_POST['product_name']) ? htmlspecialchars($_POST['product_name']) : '';
+    $prediction_date = isset($_POST['prediction_date']) ? htmlspecialchars($_POST['prediction_date']) : '';
+
+    if (!empty($product_name) && !empty($prediction_date)) {
+        // Call the Python Flask API to get the prediction
+        $api_url = 'http://localhost:5000/predict'; // Adjust if your Flask app is on a different host/port
+        $post_data = array('product' => $product_name, 'date' => $prediction_date);
+
+        $ch = curl_init($api_url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($post_data));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json'));
+
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($http_code == 200) {
+            $result_data = json_decode($response, true);
+            if (isset($result_data['predicted_price'])) {
+                $prediction_result = $result_data['predicted_price'];
+            } else if (isset($result_data['error'])) {
+                $error_message = "Prediction error: " . htmlspecialchars($result_data['error']);
+            } else {
+                $error_message = "Failed to get prediction from the API.";
+            }
+        } else {
+            $error_message = "Error connecting to the prediction API (HTTP status: " . $http_code . ")";
+        }
+
+        curl_close($ch);
+    } else {
+        $error_message = "Please select a product and a prediction date.";
+    }
+}
+
+// Close database connection
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
