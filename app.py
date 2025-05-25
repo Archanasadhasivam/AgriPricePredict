@@ -13,10 +13,11 @@ CORS(app)
 
 # ✅ Database connection
 db = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="",
-    database="price_prediction"
+    host=os.environ.get("DB_HOST", "localhost"), # Default to localhost for local development
+    user=os.environ.get("DB_USER", "root"),       # Default to root for local development
+    password=os.environ.get("DB_PASSWORD", ""),  # Default to empty for local development
+    database=os.environ.get("DB_NAME", "price_prediction") # Default to price_prediction for local development
+
 )
 cursor = db.cursor()
 
