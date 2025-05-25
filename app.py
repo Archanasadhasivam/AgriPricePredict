@@ -19,7 +19,7 @@ CORS(app)
     user=os.environ.get("DB_USER", "root"),
     password=os.environ.get("DB_PASSWORD", ""),
     database=os.environ.get("DB_NAME", "price_prediction"),
-    port=int(os.environ.get("DB_PORT", 3306)) # Added 'port' parameter, defaulting to 3306
+    port=int(os.environ.get("DB_PORT", 21436)) # Added 'port' parameter, defaulting to 3306
 
 
 )
