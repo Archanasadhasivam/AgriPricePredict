@@ -1,9 +1,67 @@
 <?php
 session_start();
+
+// Redirect to login if user is not authenticated
 if (!isset($_SESSION['user_email'])) {
-    header("Location: login.php");  // Redirect to login if not logged in
+    header("Location: login.php");
     exit();
 }
+
+// Include database connection (assuming db_connect.php exists and is configured for Aiven)
+include('db_connect.php');
+
+$user_email = $_SESSION['user_email'];
+
+// Optional: Fetch user information for personalization if needed
+$user_id = null;
+$username = 'User'; // Default username
+if (isset($_SESSION['user_id'])) {
+    $user_id = $_SESSION['user_id'];
+    $stmt = $conn->prepare("SELECT username FROM users WHERE id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($row = $result->fetch_assoc()) {
+        $username = htmlspecialchars($row['username']);
+    }
+    $stmt->close();
+}
+
+// Fetch historical prices based on user selection (if any)
+$historical_data = [];
+$selected_product = '';
+$from_date = '';
+$to_date = '';
+
+if ($_SERVER["REQUEST_METHOD"] == "GET" && isset($_GET['product_name'])) {
+    $selected_product = htmlspecialchars($_GET['product_name']);
+    $from_date = htmlspecialchars($_GET['from_date']);
+    $to_date = htmlspecialchars($_GET['to_date']);
+
+    // Query to fetch historical prices from the 'historical_prices' table
+    // Assumes 'historical_prices' table has 'product_name', 'date', 'price' columns
+    $query = "SELECT date, price FROM historical_prices WHERE product_name = ? AND date BETWEEN ? AND ? ORDER BY date ASC";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("sss", $selected_product, $from_date, $to_date);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    while ($row = $result->fetch_assoc()) {
+        $historical_data[] = $row;
+    }
+    $stmt->close();
+}
+
+// Fetch list of all unique products for the dropdown (from historical_prices table)
+$products = [];
+$productQuery = "SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC";
+$productResult = $conn->query($productQuery);
+while ($row = $productResult->fetch_assoc()) {
+    $products[] = $row['product_name'];
+}
+
+// Close database connection
+$conn->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
