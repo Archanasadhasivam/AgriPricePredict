@@ -4,6 +4,7 @@ from flask_cors import CORS
 import mysql.connector
 import joblib
 from datetime import datetime  # ✅ Required for date validation
+import os
 
 app = Flask(__name__)
 CORS(app)
