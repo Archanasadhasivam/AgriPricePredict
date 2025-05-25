@@ -1,5 +1,5 @@
 import pandas as pd
-from flask import Flask, request, jsonify, session
+from flask import Flask, request, jsonify, session, render_templates
 from flask_cors import CORS
 import mysql.connector
 import joblib
@@ -42,7 +42,7 @@ else:
 # ---------------- HOME ----------------
 @app.route('/')
 def home():
-    return "✅ Flask is working!"
+    return render_templates('login.php')
 
 # ---------------- USER REGISTRATION ----------------
 @app.route('/register', methods=['POST'])
