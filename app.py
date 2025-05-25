@@ -3,48 +3,48 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 import mysql.connector
 import joblib
-from datetime import datetime  # ✅ Required for date validation
+from datetime import datetime
 import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Configure session (optional, for user login)
+# Optional: Configure session
 # app.secret_key = 'your_secret_key'
 
 # ✅ Database connection
-
-    db = mysql.connector.connect(
+db = mysql.connector.connect(
     host=os.environ.get("DB_HOST", "localhost"),
     user=os.environ.get("DB_USER", "root"),
     password=os.environ.get("DB_PASSWORD", ""),
     database=os.environ.get("DB_NAME", "price_prediction"),
-    port=int(os.environ.get("DB_PORT", 21436)) # Added 'port' parameter, defaulting to 3306
-
-
+    port=int(os.environ.get("DB_PORT", 21436))  # ✅ Custom port or 3306 default
 )
+
 cursor = db.cursor()
 
-# ✅ Load models and data
+# ✅ Load models
 try:
     models = joblib.load("models.pkl")
 except FileNotFoundError:
-    print("⚠ Error: 'models.pkl' not found. Please run 'model.py' first to train the models.")
+    print("⚠ Error: 'models.pkl' not found. Please run 'model.py' to train and save models.")
     models = {}
 
+# ✅ Load data
 df = pd.read_csv("commodity_price.csv")
 df.columns = df.columns.str.strip()
 
 if "Commodities" in df.columns:
-    print("✅ Products:", df["Commodities"].unique())
+    print("✅ Products loaded:", df["Commodities"].unique())
 else:
-    print("❌ 'Commodities' column not found in CSV!")
+    print("❌ 'Commodities' column not found in the CSV.")
 
+# ---------------- HOME ----------------
 @app.route('/')
 def home():
-    return "Flask is working!"
+    return "✅ Flask is working!"
 
-# ---------------- USER AUTH ----------------
+# ---------------- USER REGISTRATION ----------------
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -57,17 +57,18 @@ def register():
         db.rollback()
         return jsonify({"error": f"Registration failed: {str(e)}"}), 500
 
+# ---------------- USER LOGIN ----------------
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
     cursor.execute("SELECT * FROM users WHERE email=%s AND password=%s", (data['email'], data['password']))
     user = cursor.fetchone()
     if user:
-        # session['user_email'] = data['email']  # Uncomment if using sessions
+        # session['user_email'] = data['email']  # Enable if sessions are used
         return jsonify({"message": "Login successful!"})
     return jsonify({"error": "Invalid credentials!"}), 401
 
-# ---------------- HISTORICAL PRICE TRENDS ----------------
+# ---------------- PRICE TREND FETCH ----------------
 @app.route('/price_trend', methods=['GET'])
 def get_price_trends():
     product = request.args.get('product_name')
@@ -82,7 +83,9 @@ def get_price_trends():
         if not result:
             return jsonify({"error": "Enter the correct date range!"})
 
-        return jsonify([{"date": row[0].strftime('%Y-%m-%d'), "price": float(row[1])} for row in result])
+        return jsonify([
+            {"date": row[0].strftime('%Y-%m-%d'), "price": float(row[1])} for row in result
+        ])
     except Exception as e:
         return jsonify({"error": f"Error fetching price trends: {str(e)}"}), 500
 
@@ -93,7 +96,7 @@ def predict():
     product = data.get('product')
     date_str = data.get('date')
 
-    # ✅ Date validation
+    # ✅ Validate date
     try:
         input_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         today = datetime.today().date()
@@ -102,11 +105,11 @@ def predict():
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
-    # ✅ Check model existence
+    # ✅ Check model
     if product not in models:
         return jsonify({"error": f"No model found for product: {product}"}), 400
 
-    # ✅ Filter product data
+    # ✅ Check historical data
     product_data = df[df["Commodities"] == product]
     if product_data.empty:
         return jsonify({"error": "No historical data found for this product!"}), 400
@@ -128,10 +131,11 @@ def predict():
         predicted_price = model.predict(prediction_input)[0]
         predicted_price_mysql = float(round(predicted_price, 2))
 
-        # ✅ Store in database
+        # ✅ Save prediction
         cursor.execute(
             "INSERT INTO price_predictions (product_name, predicted_price, prediction_date) VALUES (%s, %s, %s)",
-            (product, predicted_price_mysql, date_str))
+            (product, predicted_price_mysql, date_str)
+        )
         db.commit()
 
         return jsonify({"predicted_price": predicted_price_mysql})
@@ -141,6 +145,5 @@ def predict():
 
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
-    print("Starting Flask app...")
+    print("✅ Starting Flask app...")
     app.run(debug=True)
-
