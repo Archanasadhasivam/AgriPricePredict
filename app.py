@@ -1,68 +1,203 @@
-from flask import Flask, request, jsonify, render_template, session, redirect, url_for
+import pandas as pd
+from flask import Flask, request, jsonify, session, render_template
 from flask_cors import CORS
 import mysql.connector
-import bcrypt
+import joblib
+from datetime import datetime
+import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Secret key for session management
-app.secret_key = 'your_secret_key_here'
+# Optional: Configure session if you plan to use Flask's session management
+# This is crucial for security if you uncomment session usage in /login route
+# app.secret_key = 'your_very_secret_and_long_random_key_here' 
 
-# MySQL database connection config
+# ✅ Database connection using Aiven details
+# It's highly recommended to use environment variables for sensitive data like passwords
+# on production deployments (e.g., Render).
+# For now, the Aiven details are hardcoded as per your request.
 db = mysql.connector.connect(
-    host="localhost",
-    user="your_db_user",
-    password="your_db_password",
-    database="your_db_name"
+    host=os.environ.get("DB_HOST", "mysql-fc0e3b0-sadhasivamkanaga15-f154.l.aivencloud.com"),
+    user=os.environ.get("DB_USER", "avnadmin"),
+    password=os.environ.get("DB_PASSWORD", "AVNS_P2X1P7jH__WuLtv9YSs"), # IMPORTANT: Replace with your actual Aiven password!
+    database=os.environ.get("DB_NAME", "defaultdb"),
+    port=int(os.environ.get("DB_PORT", 21436))  # Aiven MySQL port
 )
+
 cursor = db.cursor()
 
-# Home route - renders login page
+# ✅ Load machine learning models
+try:
+    models = joblib.load("models.pkl")
+except FileNotFoundError:
+    print("⚠ Error: 'models.pkl' not found. Please run 'model.py' to train and save models.")
+    models = {}
+
+# ✅ Load commodity data from CSV
+df = pd.read_csv("commodity_price.csv")
+df.columns = df.columns.str.strip() # Clean column names
+
+if "Commodities" in df.columns:
+    print("✅ Products loaded:", df["Commodities"].unique())
+else:
+    print("❌ 'Commodities' column not found in the CSV. Please check 'commodity_price.csv'.")
+
+# ---------------- HOME ROUTE ----------------
+# Renders the login page (assuming login.php is a template)
 @app.route('/')
 def home():
-    return render_template('login.html')
+    return render_template('login.php')
 
-# Login route
+# ---------------- USER REGISTRATION ROUTE ----------------
+# Handles new user registration
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password') # IMPORTANT: Passwords should be hashed before storage!
+
+    if not all([username, email, password]):
+        return jsonify({"error": "Missing registration data."}), 400
+
+    # Query to insert new user into the 'users' table
+    # Assumes 'users' table has 'username', 'email', 'password' columns
+    query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
+    try:
+        cursor.execute(query, (username, email, password))
+        db.commit()
+        return jsonify({"message": "User registered successfully!"})
+    except Exception as e:
+        db.rollback()
+        # Log the full error for debugging, but return a generic message to the user
+        print(f"Registration error: {e}") 
+        return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+
+# ---------------- USER LOGIN ROUTE ----------------
+# Handles user login authentication
 @app.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
+    data = request.json
+    email = data.get('email')
+    password = data.get('password') # IMPORTANT: This should be a plain password to be verified against a hashed one!
 
-    query = "SELECT id, password FROM users WHERE username = %s"
-    cursor.execute(query, (username,))
+    if not all([email, password]):
+        return jsonify({"error": "Email and password are required."}), 400
+
+    # Query to select user from the 'users' table
+    # Assumes 'users' table has 'id', 'email', 'password' columns
+    # IMPORTANT: In a real app, you would fetch the hashed password and use password_verify()
+    cursor.execute("SELECT id, email, password FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
 
-    if user and bcrypt.checkpw(password.encode('utf-8'), user[1].encode('utf-8')):
-        session['user_id'] = user[0]
-        return jsonify({'message': 'Login successful'})
-    else:
-        return jsonify({'error': 'Invalid username or password'}), 401
+    if user:
+        # For demonstration, comparing plain text password (INSECURE!)
+        # In production, use: if password_verify(password, user[2]): # user[2] is the hashed password
+        if password == user[2]: # user[2] is the password column from the database
+            # session['user_email'] = email  # Uncomment if Flask sessions are enabled
+            # session['user_id'] = user[0]   # Uncomment if Flask sessions are enabled
+            return jsonify({"message": "Login successful!"})
+        else:
+            return jsonify({"error": "Invalid credentials!"}), 401
+    return jsonify({"error": "Invalid credentials!"}), 401
 
-# Dashboard route
-@app.route('/dashboard')
-def dashboard():
-    if 'user_id' in session:
-        return f"<h1>Welcome User {session['user_id']}</h1><br><a href='/logout'>Logout</a>"
-    else:
-        return redirect(url_for('home'))
+# ---------------- PRICE TREND FETCH ROUTE ----------------
+# Fetches historical price trends for a given product and date range
+@app.route('/price_trend', methods=['GET'])
+def get_price_trends():
+    product = request.args.get('product_name')
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
 
-# Logout route
-@app.route('/logout')
-def logout():
-    session.pop('user_id', None)
-    return redirect(url_for('home'))
+    if not all([product, from_date, to_date]):
+        return jsonify({"error": "Product name, from_date, and to_date are required."}), 400
 
-# Signup page
-@app.route('/signup')
-def signup_route():
-    return "<h1>Sign Up Page</h1>"
+    # Query to fetch data from 'historical_prices' table
+    # Assumes 'historical_prices' table has 'date', 'price', 'product_name' columns
+    query = "SELECT date, price FROM historical_prices WHERE product_name=%s AND date BETWEEN %s AND %s"
+    try:
+        cursor.execute(query, (product, from_date, to_date))
+        result = cursor.fetchall()
 
-# Admin login page
-@app.route('/admin_login')
-def admin_login_route():
-    return "<h1>Admin Login Page</h1>"
+        if not result:
+            return jsonify({"error": "No historical data found for the specified product and date range. Enter the correct date range!"})
 
-if __name__ == '__main__':
-    app.run(debug=True)
+        # Format the results for JSON response
+        return jsonify([
+            {"date": row[0].strftime('%Y-%m-%d'), "price": float(row[1])} for row in result
+        ])
+    except Exception as e:
+        print(f"Error fetching price trends: {e}")
+        return jsonify({"error": f"Error fetching price trends: {str(e)}"}), 500
+
+# ---------------- PRICE PREDICTION ROUTE ----------------
+# Generates price predictions for a given product and future date
+@app.route('/predict', methods=['POST'])
+def predict():
+    data = request.json
+    product = data.get('product')
+    date_str = data.get('date')
+
+    if not all([product, date_str]):
+        return jsonify({"error": "Product and date are required for prediction."}), 400
+
+    # ✅ Validate prediction date
+    try:
+        input_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        today = datetime.today().date()
+        if input_date < today:
+            return jsonify({"error": "Enter correct date. Prediction date cannot be in the past."}), 400
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+
+    # ✅ Check if a model exists for the requested product
+    if product not in models:
+        return jsonify({"error": f"No prediction model found for product: {product}. Please train the model."}), 400
+
+    # ✅ Extract historical data for the product from the loaded CSV
+    product_data = df[df["Commodities"] == product]
+    if product_data.empty:
+        return jsonify({"error": "No historical data found in CSV for this product to make a prediction!"}), 400
+
+    # ✅ Identify the latest price column from the CSV
+    # Assumes price columns are in a 'MM-YY' format or similar
+    price_columns = [col for col in df.columns if '-' in col and len(col.split('-')[1]) == 2]
+    if not price_columns:
+        return jsonify({"error": "Not enough price data columns in the CSV for prediction!"}), 400
+
+    latest_price_col = price_columns[-1] # Get the last price column
+    
+    # Check if the latest price data is available and not NaN
+    if latest_price_col not in product_data.columns or pd.isna(product_data[latest_price_col].iloc[0]):
+        return jsonify({"error": f"Latest price data not available in CSV for {product} to make a prediction."}), 400
+
+    latest_price = product_data[latest_price_col].iloc[0]
+    prediction_input = [[latest_price]] # Model expects a 2D array
+
+    try:
+        model = models[product]
+        predicted_price = model.predict(prediction_input)[0]
+        predicted_price_mysql = float(round(predicted_price, 2)) # Round for database storage
+
+        # ✅ Save prediction to 'price_predictions' table
+        # Assumes 'price_predictions' table has 'product_name', 'predicted_price', 'prediction_date' columns
+        cursor.execute(
+            "INSERT INTO price_predictions (product_name, predicted_price, prediction_date) VALUES (%s, %s, %s)",
+            (product, predicted_price_mysql, date_str)
+        )
+        db.commit()
+
+        return jsonify({"predicted_price": predicted_price_mysql})
+    except Exception as e:
+        db.rollback()
+        print(f"Error during prediction: {e}")
+        return jsonify({"error": f"Error during prediction: {str(e)}"}), 500
+
+# ---------------- RUN THE FLASK APPLICATION ----------------
+if __name__ == "__main__":
+    print("✅ Starting Flask app...")
+    # When deploying to Render, Render will set the PORT environment variable.
+    # It's good practice to use that if available.
+    port = int(os.environ.get("PORT", 5000)) 
+    app.run(debug=True, host='0.0.0.0', port=port)
