@@ -1,5 +1,5 @@
 import pandas as pd
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, session, url_for, redirect
 from flask_cors import CORS
 import mysql.connector
 import joblib
@@ -65,6 +65,16 @@ except Exception as e:
 def home():
     return render_template('login.html') # Assuming you have a login.html template
 
+# ---------------- SIGNUP PAGE ROUTE ----------------
+@app.route('/signup.html')
+def signup_page():
+    return render_template('signup.html') # Assuming you have a signup.html template
+
+# ---------------- ADMIN LOGIN PAGE ROUTE ----------------
+@app.route('/admin_login.html')
+def admin_login_page():
+    return render_template('admin_login.html') # Assuming you have an admin_login.html template
+
 # ---------------- USER REGISTRATION ROUTE ----------------
 @app.route('/register', methods=['POST'])
 def register():
@@ -72,7 +82,7 @@ def register():
     if not conn:
         return jsonify({"error": "Database connection failed."}), 500
     cursor = conn.cursor()
-    data = request.json
+    data = request.form # Changed from request.json to request.form for HTML forms
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
@@ -80,7 +90,7 @@ def register():
     if not all([username, email, password]):
         cursor.close()
         conn.close()
-        return jsonify({"error": "Missing registration data."}), 400
+        return render_template('signup.html', error="Missing registration data.") # Render template with error
 
     hashed_password = generate_password_hash(password)
 
@@ -90,22 +100,23 @@ def register():
         conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"message": "User registered successfully!"})
+        session['registration_success'] = "Registration successful! You can now log in."
+        return redirect(url_for('login_page')) # Redirect to login page
     except mysql.connector.IntegrityError as err:
         conn.rollback()
         cursor.close()
         conn.close()
         if "Duplicate entry" in str(err) and "email" in str(err):
-            return jsonify({"error": "Email address is already registered."}), 409
+            return render_template('signup.html', error="Email address is already registered.") # Render template with error
         else:
             print(f"Registration error: {err}")
-            return jsonify({"error": f"Registration failed: {str(err)}"}), 500
+            return render_template('signup.html', error=f"Registration failed: {str(err)}") # Render template with error
     except Exception as e:
         conn.rollback()
         cursor.close()
         conn.close()
         print(f"Registration error: {e}")
-        return jsonify({"error": f"Registration failed: {str(e)}"}), 500
+        return render_template('signup.html', error=f"Registration failed: {str(e)}") # Render template with error
 
 # ---------------- USER LOGIN ROUTE ----------------
 @app.route('/login', methods=['POST'])
@@ -114,72 +125,178 @@ def login():
     if not conn:
         return jsonify({"error": "Database connection failed."}), 500
     cursor = conn.cursor()
-    data = request.json
+    data = request.form # Changed from request.json to request.form for HTML forms
     email = data.get('email')
     password = data.get('password')
 
     if not all([email, password]):
         cursor.close()
         conn.close()
-        return jsonify({"error": "Email and password are required."}), 400
+        return render_template('login.html', error="Email and password are required.") # Render template with error
 
-    cursor.execute("SELECT id, email, password FROM users WHERE email=%s", (email,))
+    cursor.execute("SELECT id, email, password, username FROM users WHERE email=%s", (email,))
     user = cursor.fetchone()
     cursor.close()
     conn.close()
 
     if user:
-        user_id, user_email, hashed_password_from_db = user
+        user_id, user_email, hashed_password_from_db, username = user # Added username to unpacking
         if check_password_hash(hashed_password_from_db, password):
             session['user_email'] = user_email
             session['user_id'] = user_id
-            return jsonify({"message": "Login successful!"})
+            session['username'] = username # Store username in session
+            return redirect(url_for('dashboard')) # Redirect to dashboard on successful login
         else:
-            return jsonify({"error": "Invalid credentials!"}), 401
-    return jsonify({"error": "Invalid credentials!"}), 401
+            return render_template('login.html', error="Invalid credentials!") # Render template with error
+    return render_template('login.html', error="Invalid credentials!") # Render template with error
 
-# ---------------- PRICE TREND FETCH ROUTE ----------------
-@app.route('/price_trend', methods=['GET'])
-def get_price_trends():
+# ---------------- ADMIN LOGIN API ROUTE ----------------
+@app.route('/admin_login', methods=['POST'])
+def admin_login():
     conn = get_db_connection()
     if not conn:
-        return jsonify({"error": "Database connection failed."}), 500
-    cursor = conn.cursor()
-    product = request.args.get('product_name')
-    from_date = request.args.get('from_date')
-    to_date = request.args.get('to_date')
+        return jsonify({'status': 'error', 'message': 'Database connection failed'}), 500
 
-    if not all([product, from_date, to_date]):
-        cursor.close()
+    data = request.form # Changed from request.json to request.form for HTML forms
+    email = data.get('email')
+    password = data.get('password')
+
+    if not email or not password:
         conn.close()
-        return jsonify({"error": "Product name, from_date, and to_date are required."}), 400
+        return render_template('admin_login.html', error='Email and Password are required!')
 
-    query = "SELECT date, price FROM historical_prices WHERE product_name=%s AND date BETWEEN %s AND %s"
     try:
-        cursor.execute(query, (product, from_date, to_date))
-        result = cursor.fetchall()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, email, password FROM admin_users WHERE email = %s", (email,))
+        admin_user = cursor.fetchone()
         cursor.close()
         conn.close()
 
-        if not result:
-            return jsonify({"error": "No historical data found for the specified product and date range. Enter the correct date range!"})
+        if admin_user and check_password_hash(admin_user['password'], password):
+            session['admin_id'] = admin_user['id']
+            session['admin_email'] = admin_user['email']
+            session['is_admin'] = True
+            return redirect(url_for('admin_dashboard')) # Redirect to admin dashboard
+        else:
+            return render_template('admin_login.html', error='Invalid admin credentials!')
+    except mysql.connector.Error as err:
+        conn.close()
+        return render_template('admin_login.html', error=f"Database error during admin login: {err}")
 
-        return jsonify([
-            {"date": row[0].strftime('%Y-%m-%d'), "price": float(row[1])} for row in result
-        ])
-    except Exception as e:
-        print(f"Error fetching price trends: {e}")
+# ---------------- DASHBOARD ROUTE ----------------
+@app.route('/dashboard')
+def dashboard():
+    if 'user_id' in session:
+        # Fetch user details for dashboard display
+        conn = get_db_connection()
+        if not conn:
+            return "Database connection failed", 500
+        cursor = conn.cursor(dictionary=True)
+        user_email = session['user_email']
+        username = session.get('username', 'User') # Get username from session
+
+        alerts = []
+        try:
+            cursor.execute("SELECT id, product_name, alert_price FROM price_alerts WHERE user_id = %s", (session['user_id'],))
+            alerts = cursor.fetchall()
+        except mysql.connector.Error as err:
+            print(f"Error fetching alerts for dashboard: {err}")
+        finally:
+            cursor.close()
+            conn.close()
+
+        return render_template('dashboard.html', user_email=user_email, username=username, alerts=alerts)
+    else:
+        return redirect(url_for('login_page')) # Redirect to login if not logged in
+
+# ---------------- ADMIN DASHBOARD ROUTE ----------------
+@app.route('/admin_dashboard')
+def admin_dashboard():
+    if 'is_admin' in session and session['is_admin']:
+        conn = get_db_connection()
+        if not conn:
+            return "Database connection failed", 500
+
+        users = []
+        try:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT id, username, email FROM users") # Fetching from 'users' table
+            users = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            return render_template('admin_dashboard.html', users=users, message=session.pop('message', None), message_type=session.pop('message_type', None))
+        except mysql.connector.Error as err:
+            conn.close()
+            return f"Database error: {err}", 500
+    else:
+        return redirect(url_for('admin_login_page')) # Redirect to admin login if not admin
+
+# ---------------- DELETE USER (ADMIN) ROUTE ----------------
+@app.route('/admin/delete_user/<int:user_id>')
+def delete_user(user_id):
+    if 'is_admin' not in session or not session['is_admin']:
+        return redirect(url_for('admin_login_page'))
+
+    conn = get_db_connection()
+    if not conn:
+        session['message'] = "Database connection failed.";
+        session['message_type'] = 'danger';
+        return redirect(url_for('admin_dashboard'))
+
+    try:
+        cursor = conn.cursor()
+        delete_query = "DELETE FROM users WHERE id = %s"
+        cursor.execute(delete_query, (user_id,))
+        conn.commit()
         cursor.close()
         conn.close()
-        return jsonify({"error": f"Error fetching price trends: {str(e)}"}), 500
+        session['message'] = "User deleted successfully.";
+        session['message_type'] = 'success';
+    except mysql.connector.Error as err:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        session['message'] = f"Error deleting user: {err}";
+        session['message_type'] = 'danger';
 
-# ---------------- PRICE PREDICTION ROUTE ----------------
+    return redirect(url_for('admin_dashboard'))
+
+# ---------------- PREDICT PRICE PAGE ROUTE ----------------
+@app.route('/predict_price')
+def predict_price_page():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection failed", 500
+
+    products = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
+        product_results = cursor.fetchall()
+        products = [row[0] for row in product_results]
+        cursor.close()
+    except mysql.connector.Error as err:
+        conn.close()
+        return f"Database error fetching products: {err}", 500
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
+    return render_template('predict_price.html', products=products)
+
+# ---------------- PRICE PREDICTION API ROUTE ----------------
 @app.route('/predict', methods=['POST'])
 def predict():
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized. Please log in."}), 401 # Return JSON for API calls
+
     if not models:
         return jsonify({"error": "Prediction models are not loaded. Please ensure 'models.pkl' exists and was trained."}), 503
 
-    data = request.json
+    data = request.form # Changed from request.json to request.form for HTML forms
     product = data.get('product')
     date_str = data.get('date')
 
@@ -236,6 +353,153 @@ def predict():
     except Exception as e:
         print(f"Error during prediction: {e}")
         return jsonify({"error": f"Error during prediction: {str(e)}"}), 500
+
+# ---------------- ALERT SETTINGS PAGE ROUTE ----------------
+@app.route('/alert_settings')
+def alert_settings_page():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+
+    user_id = session['user_id']
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection failed", 500
+
+    alerts = []
+    products = []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, product_name, alert_price FROM price_alerts WHERE user_id = %s", (user_id,))
+        alerts = cursor.fetchall()
+
+        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
+        product_results = cursor.fetchall()
+        products = [row['product_name'] for row in product_results] # Assuming dictionary=True for products too
+    except mysql.connector.Error as err:
+        print(f"Error fetching alerts or products: {err}")
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+    return render_template('alert_settings.html', alerts=alerts, products=products, message=session.pop('alert_message', None))
+
+# ---------------- SET/UPDATE ALERT ROUTE ----------------
+@app.route('/set_alert', methods=['POST'])
+def set_alert():
+    if 'user_id' not in session:
+        return jsonify({"error": "Unauthorized. Please log in."}), 401
+
+    user_id = session['user_id']
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+
+    product = request.form.get('product')
+    price = request.form.get('price')
+
+    if not product or not price:
+        conn.close()
+        session['alert_message'] = "Please fill in all fields!"
+        return redirect(url_for('alert_settings_page'))
+
+    try:
+        price = float(price) # Ensure price is a float
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM price_alerts WHERE user_id = %s AND product_name = %s", (user_id, product))
+        existing_alert = cursor.fetchone()
+
+        if existing_alert:
+            update_query = "UPDATE price_alerts SET alert_price = %s WHERE id = %s"
+            cursor.execute(update_query, (price, existing_alert[0]))
+            conn.commit()
+            session['alert_message'] = "Alert updated successfully!"
+        else:
+            insert_query = "INSERT INTO price_alerts (user_id, product_name, alert_price) VALUES (%s, %s, %s)"
+            cursor.execute(insert_query, (user_id, product, price))
+            conn.commit()
+            session['alert_message'] = "Alert set successfully!"
+        cursor.close()
+    except ValueError:
+        session['alert_message'] = "Invalid price value."
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"Database error setting alert: {err}")
+        session['alert_message'] = f"Error setting alert: {err}"
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+
+    return redirect(url_for('alert_settings_page'))
+
+# ---------------- DELETE ALERT ROUTE ----------------
+@app.route('/alerts/delete/<int:alert_id>')
+def delete_alert(alert_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+
+    user_id = session['user_id']
+    conn = get_db_connection()
+    if not conn:
+        session['alert_message'] = "Database connection failed."
+        return redirect(url_for('alert_settings_page'))
+
+    try:
+        cursor = conn.cursor()
+        delete_query = "DELETE FROM price_alerts WHERE id = %s AND user_id = %s"
+        cursor.execute(delete_query, (alert_id, user_id))
+        conn.commit()
+        cursor.close()
+        session['alert_message'] = "Alert deleted successfully!"
+    except mysql.connector.Error as err:
+        conn.rollback()
+        print(f"Database error deleting alert: {err}")
+        session['alert_message'] = f"Error deleting alert: {err}"
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+    return redirect(url_for('alert_settings_page'))
+
+# ---------------- HISTORICAL PRICE PAGE ROUTE ----------------
+@app.route('/historical_price')
+def historical_price_page():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection failed", 500
+
+    products = []
+    try:
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
+        product_results = cursor.fetchall()
+        products = [row['product_name'] for row in product_results]
+    except mysql.connector.Error as err:
+        print(f"Database error fetching products for historical price: {err}")
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+    return render_template('historical_price.html', products=products)
+
+# ---------------- LOGOUT ROUTE ----------------
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('user_email', None)
+    session.pop('username', None) # Clear username from session
+    session.pop('admin_id', None) # Clear admin session if exists
+    session.pop('admin_email', None)
+    session.pop('is_admin', None)
+    return redirect(url_for('loggedout_page')) # Redirect to the logged out page
+
+# ---------------- LOGGED OUT PAGE ROUTE ----------------
+@app.route('/loggedout.html')
+def loggedout_page():
+    return render_template('loggedout.html')
 
 # ---------------- RUN THE FLASK APPLICATION ----------------
 if __name__ == "__main__":
