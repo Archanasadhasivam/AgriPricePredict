@@ -1,134 +1,50 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Login</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f4f4f4;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh; /* This is key for centering vertically */
-            margin: 0;
-        }
-
-        .login-container {
-            background: #fff;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.1);
-            width: 350px;
-            text-align: center;
-        }
-
-        h2 {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin: 10px 0 5px;
-            text-align: left;
-        }
-
-        input[type="email"],
-        input[type="password"] {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            box-sizing: border-box;
-        }
-
-        button {
-            width: 100%;
-            padding: 10px;
-            margin-top: 20px;
-            background-color: #3dd5f3;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-
-        button:hover {
-            background-color: #26c0dd;
-        }
-
-        #message {
-            margin-top: 10px;
-            color: red;
-        }
-
-        .signup-link {
-            margin-top: 15px;
-            font-size: 14px;
-        }
-
-        .signup-link a {
-            color: #007bff;
-            text-decoration: none;
-        }
-
-        .signup-link a:hover {
-            text-decoration: underline;
-        }
-    </style>
+  <title>Login Page</title>
 </head>
 <body>
+  <h2>Login</h2>
+  <form id="loginForm">
+    <label>Email:</label>
+    <input type="text" id="email" required><br>
+    <label>Password:</label>
+    <input type="password" id="password" required><br>
+    <button type="submit">Login</button>
+  </form>
 
-<div class="login-container">
-    <h2>Login</h2>
-    <p id="message"></p>
-    <form id="loginForm" onsubmit="return false;">
-        <label>Email:</label>
-        <input type="email" name="email" required>
+  <div id="message"></div>
 
-        <label>Password:</label>
-        <input type="password" name="password" required>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", function(e) {
+      e.preventDefault();
 
-        <button type="submit">Login</button>
-    </form>
+      const data = {
+        email: document.getElementById("email").value,
+        password: document.getElementById("password").value
+      };
 
-    <div class="signup-link">
-        Don't have an account? <a href="signup.php">Sign up here</a>.
-    </div>
-    <div class="signup-link">
-        Are you an admin? <a href="admin_login.php">Click here to login as admin</a>.
-    </div>
-</div>
-
-<script>
-    const form = document.getElementById('loginForm');
-    const message = document.getElementById('message');
-
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-
-        const formData = new FormData(form);
-        formData.append('ajax', '1');
-
-        fetch('login.php', { // Replace with your backend URL or endpoint
-            method: 'POST',
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'success') {
-                window.location.href = data.redirect;
-            } else {
-                message.textContent = '❌ ' + data.message;
-            }
-        })
-        .catch(error => {
-            message.textContent = '❌ Something went wrong!';
-            console.error(error);
-        });
+      fetch("/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.message) {
+          document.getElementById("message").innerHTML = data.message;
+          window.location.href = "/dashboard";
+        } else {
+          document.getElementById("message").innerHTML = data.error;
+        }
+      })
+      .catch(error => {
+        document.getElementById("message").innerHTML = "Error occurred during login.";
+        console.error("Login error:", error);
+      });
     });
-</script>
-
+  </script>
 </body>
 </html>
