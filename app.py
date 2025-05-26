@@ -35,10 +35,10 @@ def get_db_connection():
             port=db_port
             # ssl_ca='path/to/your/aiven_ca.pem' # Uncomment and provide path if Aiven requires SSL CA file
         )
-        print("✅ Database connection established.")
+        print("✅ Database connection established (get_db_connection).")
         return conn
     except mysql.connector.Error as err:
-        print(f"❌ Database connection error: {err}")
+        print(f"❌ Database connection error (get_db_connection): {err}")
         return None
 
 # ✅ Load machine learning models
@@ -93,7 +93,7 @@ def register():
     """Handles new user registration."""
     conn = get_db_connection()
     if not conn:
-        print("❌ Register: Database connection failed.")
+        print("❌ Register: Database connection failed (at the beginning of route).")
         return redirect(url_for('signup_page', error="Database connection failed. Please try again later."))
 
     cursor = conn.cursor()
@@ -102,6 +102,9 @@ def register():
     email = data.get('email')
     password = data.get('password')
 
+    print("ℹ️ Register: Form data received:", data)
+    print(f"ℹ️ Register: Username: '{username}', Email: '{email}', Password: '{password}'")
+
     if not all([username, email, password]):
         cursor.close()
         conn.close()
@@ -109,11 +112,13 @@ def register():
         return redirect(url_for('signup_page', error="All fields are required."))
 
     hashed_password = generate_password_hash(password)
+    print(f"ℹ️ Register: Hashed password generated: '{hashed_password[:20]}...'") # Log a snippet
 
     query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
     try:
         cursor.execute(query, (username, email, hashed_password))
         conn.commit()
+        print("✅ Register: User data committed to database.")
         cursor.close()
         conn.close()
         session['registration_success'] = "Registration successful! You can now log in."
@@ -123,18 +128,24 @@ def register():
         conn.rollback()
         cursor.close()
         conn.close()
+        print(f"❌ Register error (IntegrityError): {err}")
         if "Duplicate entry" in str(err) and "email" in str(err):
             print(f"❌ Register: Email '{email}' already registered.")
             return redirect(url_for('signup_page', error="Email address is already registered."))
         else:
-            print(f"❌ Register error (IntegrityError): {err}")
-            return redirect(url_for('signup_page', error=f"Registration failed: {str(err)}"))
+            return redirect(url_for('signup_page', error=f"Registration failed due to database error: {str(err)}"))
+    except mysql.connector.Error as err:
+        conn.rollback()
+        cursor.close()
+        conn.close()
+        print(f"❌ Register error (mysql.connector.Error): {err}")
+        return redirect(url_for('signup_page', error=f"Registration failed due to database error: {str(err)}"))
     except Exception as e:
         conn.rollback()
         cursor.close()
         conn.close()
         print(f"❌ Register error (General Exception): {e}")
-        return redirect(url_for('signup_page', error=f"Registration failed: {str(e)}"))
+        return redirect(url_for('signup_page', error=f"Registration failed due to an unexpected error: {str(e)}"))
 
 # ---------------- LOGIN PAGE ROUTE ----------------
 @app.route('/login.html')
@@ -563,7 +574,7 @@ def predict():
             return jsonify({"error": "Enter correct date. Prediction date cannot be in the past."}), 400
     except ValueError:
         print("❌ Predict API: Invalid date format.")
-        return jsonify({"error": "Invalid date format. Use THAT-MM-DD."}), 400
+        return jsonify({"error": "Invalid date format. Use %Y-%m-%d."}), 400
 
     if product not in models:
         print(f"❌ Predict API: No model found for product: {product}.")
