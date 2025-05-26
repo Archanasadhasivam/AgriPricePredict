@@ -103,13 +103,29 @@ def register():
     password = data.get('password')
 
     print("ℹ️ Register: Form data received:", data)
-    print(f"ℹ️ Register: Username: '{username}', Email: '{email}', Password: '{password}'")
+    print(f"ℹ️ Register: Username: '{username}', Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not all([username, email, password]):
         cursor.close()
         conn.close()
         print("❌ Register: Missing required fields.")
         return redirect(url_for('signup_page', error="All fields are required."))
+
+    # Check if email already exists before attempting insert
+    try:
+        cursor.execute("SELECT id FROM users WHERE email = %s", (email,))
+        existing_user = cursor.fetchone()
+        if existing_user:
+            cursor.close()
+            conn.close()
+            print(f"❌ Register: Email '{email}' already registered.")
+            return redirect(url_for('signup_page', error="Email address is already registered. Please use a different email."))
+    except mysql.connector.Error as err:
+        cursor.close()
+        conn.close()
+        print(f"❌ Register: Database error checking for existing email: {err}")
+        return redirect(url_for('signup_page', error=f"Registration failed: Database error checking email. {str(err)}"))
+
 
     hashed_password = generate_password_hash(password)
     print(f"ℹ️ Register: Hashed password generated: '{hashed_password[:20]}...'") # Log a snippet
@@ -124,27 +140,17 @@ def register():
         session['registration_success'] = "Registration successful! You can now log in."
         print(f"✅ User '{email}' registered successfully.")
         return redirect(url_for('login_page'))
-    except mysql.connector.IntegrityError as err:
+    except mysql.connector.Error as err: # Catch specific MySQL errors
         conn.rollback()
         cursor.close()
         conn.close()
-        print(f"❌ Register error (IntegrityError): {err}")
-        if "Duplicate entry" in str(err) and "email" in str(err):
-            print(f"❌ Register: Email '{email}' already registered.")
-            return redirect(url_for('signup_page', error="Email address is already registered."))
-        else:
-            return redirect(url_for('signup_page', error=f"Registration failed due to database error: {str(err)}"))
-    except mysql.connector.Error as err:
-        conn.rollback()
-        cursor.close()
-        conn.close()
-        print(f"❌ Register error (mysql.connector.Error): {err}")
+        print(f"❌ Register error (mysql.connector.Error during insert): {err}")
         return redirect(url_for('signup_page', error=f"Registration failed due to database error: {str(err)}"))
-    except Exception as e:
+    except Exception as e: # Catch any other unexpected errors
         conn.rollback()
         cursor.close()
         conn.close()
-        print(f"❌ Register error (General Exception): {e}")
+        print(f"❌ Register error (General Exception during insert): {e}")
         return redirect(url_for('signup_page', error=f"Registration failed due to an unexpected error: {str(e)}"))
 
 # ---------------- LOGIN PAGE ROUTE ----------------
@@ -170,6 +176,7 @@ def login():
     password = data.get('password')
 
     print("ℹ️ User Login: Form data received:", request.form) # Log the entire form data
+    print(f"ℹ️ User Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not all([email, password]):
         cursor.close()
@@ -224,6 +231,7 @@ def admin_login():
     password = data.get('password')
 
     print("ℹ️ Admin Login: Form data received:", request.form) # Log the entire form data
+    print(f"ℹ️ Admin Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not email or not password:
         cursor.close()
