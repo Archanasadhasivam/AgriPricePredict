@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historical Price Trends</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #f9f9f9; }
+        .container { border: 1px solid #ccc; padding: 20px; border-radius: 10px; width: 400px; background: white; text-align: center; }
+        h2 { margin-bottom: 20px; }
+        label { display: block; text-align: left; margin-bottom: 5px; }
+        select, input[type="date"] { width: calc(100% - 12px); padding: 8px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background-color: #53cadf; color: white; border: none; border-radius: 5px; cursor: pointer; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .back-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #53cadf; color: white; border-radius: 5px; text-decoration: none; }
+        .back-link:hover { opacity: 0.9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>View Historical Price Trends</h2>
+
+        <label for="product">Select Product:</label>
+        <select id="product" name="product">
+            {% for product in products %}
+                <option value="{{ product }}">{{ product|capitalize }}</option>
+            {% endfor %}
+        </select>
+
+        <label for="fromDate">From:</label>
+        <input type="date" id="fromDate" name="fromDate">
+
+        <label for="toDate">To:</label>
+        <input type="date" id="toDate" name="toDate">
+
+        <button onclick="fetchPriceTrends()">View Trends</button>
+
+        <table border="1" id="resultTable">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Price (per kg)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="2">No Data Available</td></tr>
+            </tbody>
+        </table>
+
+        <a href="{{ url_for('dashboard') }}" class="back-link">Back</a>
+    </div>
+
+    <script>
+        function fetchPriceTrends() {
+            const product = document.getElementById("product").value;
+            const fromDate = document.getElementById("fromDate").value;
+            const toDate = document.getElementById("toDate").value;
+            const resultTableBody = document.getElementById("resultTable").getElementsByTagName('tbody')[0];
+
+            if (!fromDate || !toDate) {
+                alert("Please select both dates.");
+                return;
+            }
+
+            fetch(`/price_trend?product_name=${product}&from_date=${fromDate}&to_date=${toDate}`)
+                .then(response => response.json())
+                .then(data => {
+                    resultTableBody.innerHTML = ""; // Clear previous results
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    data.forEach(item => {
+                        let row = resultTableBody.insertRow();
+                        let dateCell = row.insertCell();
+                        let priceCell = row.insertCell();
+                        dateCell.textContent = new Date(item.date).toISOString().split('T')[0];
+                        priceCell.textContent = item.price;
+                    });
+                    if (data.length === 0) {
+                        let row = resultTableBody.insertRow();
+                        let noDataCell = row.insertCell();
+                        noDataCell.colSpan = 2;
+                        noDataCell.textContent = "No Data Available for the selected period.";
+                    }
+                })
+                .catch(error => {
+                    console.error("Error fetching data:", error);
+                    alert("Error fetching price trends.");
+                });
+        }
+    </script>
+</body>
+</html>
