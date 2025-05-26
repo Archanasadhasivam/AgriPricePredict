@@ -8,63 +8,84 @@
         body {
             font-family: Arial, sans-serif;
             background-color: #f2f2f2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
         }
         .container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 20px;
             background-color: white;
-            border-radius: 10px;
+            padding: 30px;
+            border-radius: 8px;
             box-shadow: 0px 0px 10px rgba(0,0,0,0.1);
+            width: 300px; /* Adjusted width to match screenshot */
         }
         h2 {
             text-align: center;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
         }
         input[type="text"], input[type="password"] {
-            width: 100%;
+            width: calc(100% - 22px); /* Adjust for padding and border */
             padding: 10px;
-            margin: 10px 0;
+            margin-bottom: 15px;
             border: 1px solid #ccc;
-            border-radius: 5px;
+            border-radius: 4px;
+            box-sizing: border-box;
         }
         button {
             width: 100%;
             padding: 10px;
-            background-color: #4CAF50;
+            background-color: #00bcd4; /* Changed to match screenshot color */
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
+            font-size: 16px;
         }
         button:hover {
-            background-color: #45a049;
+            background-color: #008ba7;
         }
         .links {
-            margin-top: 15px;
+            margin-top: 20px;
             text-align: center;
+            font-size: 12px;
+            color: #777;
         }
         .links a {
-            color: #333;
+            color: #2196f3; /* Changed to match screenshot link color */
             text-decoration: none;
+        }
+        .links a:hover {
+            text-decoration: underline;
         }
         .error {
             color: red;
             text-align: center;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2>User Login</h2>
+        <h2>Login</h2>
         <form id="loginForm">
-            <input type="text" id="username" placeholder="Username" required>
-            <input type="password" id="password" placeholder="Password" required>
+            <label for="username">Email:</label>
+            <input type="text" id="username" placeholder="username1@gmail.com" value="username1@gmail.com" required>
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="••••••" required>
             <button type="submit">Login</button>
             <div id="message" class="error"></div>
         </form>
         <div class="links">
-            <p><a href="/signup">Create Account</a></p>
-            <p><a href="/admin_login">Admin Login</a></p>
+            <p>Don't have an account? <a href="signup.html">Sign up here</a>.</p>
+            <p>Are you an admin? <a href="admin_login.html">Click here to login as admin</a>.</p>
         </div>
     </div>
 
@@ -73,6 +94,48 @@
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
+            const messageElement = document.getElementById('message');
+            messageElement.textContent = ''; // Clear previous messages
+
+            // Simulate successful login for visual match (replace with actual API call)
+            if (username === 'username1@gmail.com' && password === 'your_password') {
+                window.location.href = '/dashboard';
+            } else {
+                messageElement.textContent = 'Incorrect username or password.';
+            }
+
+            /*
+            // Replace the above simulation with your actual API call:
+            fetch('/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ username: username, password: password })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    window.location.href = '/dashboard';
+                } else if (data.error) {
+                    messageElement.textContent = data.error;
+                }
+            })
+            .catch(error => {
+                document.getElementById('message').textContent = 'An error occurred.';
+                console.error('Error:', error);
+            });
+            */
+//         });
+//     </script>
+// </body>
+// </html>
+
+//     <script>
+//         document.getElementById('loginForm').addEventListener('submit', function(e) {
+//             e.preventDefault();
+//             const username = document.getElementById('username').value;
+//             const password = document.getElementById('password').value;
 
             fetch('/login', {
                 method: 'POST',
