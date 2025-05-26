@@ -399,8 +399,49 @@ def historical_price_page():
             conn.close()
 
     return render_template('historical_price.html', products=products)
-
 # ---------------- PREDICT PRICE PAGE ROUTE ----------------
 @app.route('/predict_price')
 def predict_price_page():
     if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+
+    conn = get_db_connection()
+    if not conn:
+        return "Database connection failed", 500
+
+    products = []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
+        product_results = cursor.fetchall()
+        products = [row[0] for row in product_results]
+        cursor.close()
+    except mysql.connector.Error as err:
+        conn.close()
+        return f"Database error fetching products: {err}", 500
+    finally:
+        if conn and conn.is_connected():
+            conn.close()
+    return render_template('predict_price.html', products=products)
+
+# ---------------- LOGOUT ROUTE ----------------
+@app.route('/logout')
+def logout():
+    session.pop('user_id', None)
+    session.pop('user_email', None)
+    session.pop('username', None) # Clear username from session
+    session.pop('admin_id', None) # Clear admin session if exists
+    session.pop('admin_email', None)
+    session.pop('is_admin', None)
+    return redirect(url_for('loggedout_page')) # Redirect to the logged out page
+
+# ---------------- LOGGED OUT PAGE ROUTE ----------------
+@app.route('/loggedout.html')
+def loggedout_page():
+    return render_template('loggedout.html')
+
+# ---------------- RUN THE FLASK APPLICATION ----------------
+if __name__ == "__main__":
+    print("✅ Starting Flask app...")
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
