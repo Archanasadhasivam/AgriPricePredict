@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+
+        nav {
+            background-color: #53cadf;
+            padding: 15px;
+            color: white;
+            text-align: center;
+        }
+
+        nav h2 {
+            margin: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 30px auto;
+            padding: 20px;
+            background: white;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        h3 {
+            margin-bottom: 20px;
+        }
+
+        p {
+            margin-bottom: 20px;
+        }
+
+        .dashboard-actions {
+            margin-top: 20px;
+            display: flex; /* Use flexbox for button layout */
+            justify-content: center; /* Center buttons horizontally */
+            flex-wrap: wrap; /* Allow buttons to wrap to next line on small screens */
+            gap: 10px; /* Space between buttons */
+        }
+
+        .dashboard-actions a {
+            text-decoration: none;
+            padding: 10px 20px;
+            color: white;
+            border-radius: 5px;
+            transition: background-color 0.3s ease;
+        }
+
+        .dashboard-actions a:hover {
+            opacity: 0.9;
+        }
+
+        .set-alert-btn { background-color: #28a745; } /* Green */
+        .predict-price-btn { background-color: #ffc107; } /* Yellow */
+        .view-trend-btn { background-color: #17a2b8; } /* Cyan */
+        .logout-btn { background-color: #dc3545; } /* Red */
+
+        .alerts-section {
+            margin-top: 40px;
+            text-align: left;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+
+        .alerts-section h4 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .alerts-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .alerts-table th, .alerts-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .alerts-table th {
+            background-color: #f2f2f2;
+        }
+
+        .no-alerts-message {
+            color: #777;
+            text-align: center;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <h2>User Dashboard</h2>
+    </nav>
+
+    <div class="container">
+        <h3>Welcome, {{ username }} ({{ user_email }})!</h3>
+
+        <p>This web application helps farmers, traders, and policymakers track market prices of agricultural and horticultural commodities like pulses and vegetables. It provides insights based on seasonality, production estimates, and past trends. The goal is to support better planning and help stabilize market fluctuations.</p>
+
+        <div class="dashboard-actions">
+            <a href="{{ url_for('alert_settings') }}" class="set-alert-btn">Set Alert</a>
+            <a href="{{ url_for('predict_price') }}" class="predict-price-btn">Predict Price</a>
+            <a href="{{ url_for('historical_price') }}" class="view-trend-btn">View Price Trend</a>
+            <a href="{{ url_for('logout') }}" class="logout-btn">Logout</a>
+        </div>
+
+        <div class="alerts-section">
+            <h4>Your Active Price Alerts</h4>
+            {% if alerts %}
+                <table class="alerts-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Alert Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for alert in alerts %}
+                            <tr>
+                                <td>{{ alert.product_name }}</td>
+                                <td>₹{{ "{:.2f}".format(alert.alert_price) }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="no-alerts-message">You have no active price alerts. <a href="{{ url_for('alert_settings') }}">Set one now!</a></p>
+            {% endif %}
+        </div>
+    </div>
+
+</body>
+</html>
