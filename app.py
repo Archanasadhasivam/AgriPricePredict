@@ -164,31 +164,37 @@ def login():
         print("❌ User Login: Missing email or password.")
         return redirect(url_for('login_page', error="Email and password are required."))
 
+    user = None
     try:
         cursor.execute("SELECT id, email, password, username FROM users WHERE email=%s", (email,))
         user = cursor.fetchone()
+        print(f"ℹ️ User Login: Query executed. User found: {user is not None}")
+    except mysql.connector.Error as err:
+        print(f"❌ User Login: Database query error: {err}")
         cursor.close()
         conn.close()
-
-        if user:
-            user_id, user_email, hashed_password_from_db, username = user
-            if check_password_hash(hashed_password_from_db, password):
-                session['user_email'] = user_email
-                session['user_id'] = user_id
-                session['username'] = username
-                print(f"✅ User '{user_email}' logged in successfully. Redirecting to dashboard.")
-                return redirect(url_for('dashboard'))
-            else:
-                print(f"❌ User Login: Invalid password for '{email}'.")
-                return redirect(url_for('login_page', error="Invalid credentials!"))
-        else:
-            print(f"❌ User Login: User '{email}' not found.")
-            return redirect(url_for('login_page', error="Invalid credentials!"))
-    except Exception as e:
-        print(f"❌ User Login error: {e}")
+        return redirect(url_for('login_page', error="An error occurred during login."))
+    finally:
         if conn and conn.is_connected():
+            cursor.close()
             conn.close()
-        return redirect(url_for('login_page', error=f"An error occurred during login: {str(e)}"))
+
+    if user:
+        user_id, user_email, hashed_password_from_db, username = user
+        print(f"ℹ️ User Login: Retrieved user - ID: {user_id}, Email: {user_email}")
+        print(f"ℹ️ User Login: Checking password hash for provided password against '{hashed_password_from_db[:20]}...'") # Log a snippet of the hash
+        if check_password_hash(hashed_password_from_db, password):
+            session['user_email'] = user_email
+            session['user_id'] = user_id
+            session['username'] = username
+            print(f"✅ User '{user_email}' logged in successfully. Redirecting to dashboard.")
+            return redirect(url_for('dashboard'))
+        else:
+            print(f"❌ User Login: Invalid password for '{email}'.")
+            return redirect(url_for('login_page', error="Invalid credentials!"))
+    else:
+        print(f"❌ User Login: User '{email}' not found.")
+        return redirect(url_for('login_page', error="Invalid credentials!"))
 
 # ---------------- ADMIN LOGIN API ROUTE ----------------
 @app.route('/admin_login', methods=['POST'])
@@ -210,35 +216,36 @@ def admin_login():
         print("❌ Admin Login: Missing email or password.")
         return redirect(url_for('admin_login_page', error='Email and Password are required!'))
 
+    admin_user = None
     try:
         cursor.execute("SELECT id, email, password FROM admin_users WHERE email = %s", (email,))
         admin_user = cursor.fetchone()
+        print(f"ℹ️ Admin Login: Query executed. Admin user found: {admin_user is not None}")
+    except mysql.connector.Error as err:
+        print(f"❌ Admin Login: Database query error: {err}")
         cursor.close()
         conn.close()
+        return redirect(url_for('admin_login_page', error="An error occurred during admin login."))
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
-        if admin_user:
-            if check_password_hash(admin_user['password'], password):
-                session['admin_id'] = admin_user['id']
-                session['admin_email'] = admin_user['email']
-                session['is_admin'] = True
-                print(f"✅ Admin '{email}' logged in successfully. Redirecting to admin dashboard.")
-                return redirect(url_for('admin_dashboard'))
-            else:
-                print(f"❌ Admin Login: Invalid password for admin '{email}'.")
-                return redirect(url_for('admin_login_page', error='Invalid admin credentials!'))
+    if admin_user:
+        print(f"ℹ️ Admin Login: Retrieved admin user - ID: {admin_user['id']}, Email: {admin_user['email']}")
+        print(f"ℹ️ Admin Login: Checking password hash for provided password against '{admin_user['password'][:20]}...'") # Log a snippet
+        if check_password_hash(admin_user['password'], password):
+            session['admin_id'] = admin_user['id']
+            session['admin_email'] = admin_user['email']
+            session['is_admin'] = True
+            print(f"✅ Admin '{email}' logged in successfully. Redirecting to admin dashboard.")
+            return redirect(url_for('admin_dashboard'))
         else:
-            print(f"❌ Admin Login: Admin user '{email}' not found.")
+            print(f"❌ Admin Login: Invalid password for admin '{email}'.")
             return redirect(url_for('admin_login_page', error='Invalid admin credentials!'))
-    except mysql.connector.Error as err:
-        print(f"❌ Admin Login database error: {err}")
-        if conn and conn.is_connected():
-            conn.close()
-        return redirect(url_for('admin_login_page', error=f"An error occurred during admin login: {str(err)}"))
-    except Exception as e:
-        print(f"❌ Admin Login general error: {e}")
-        if conn and conn.is_connected():
-            conn.close()
-        return redirect(url_for('admin_login_page', error=f"An unexpected error occurred: {str(e)}"))
+    else:
+        print(f"❌ Admin Login: Admin user '{email}' not found.")
+        return redirect(url_for('admin_login_page', error='Invalid admin credentials!'))
 
 # ---------------- DASHBOARD ROUTE ----------------
 @app.route('/dashboard')
@@ -287,7 +294,7 @@ def admin_dashboard():
     users = []
     try:
         cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT id, username, email FROM users") # Fetching from 'users' table
+        cursor.execute("SELECT id, username, email FROM users")
         users = cursor.fetchall()
         print(f"✅ Admin Dashboard: Fetched {len(users)} users.")
     except mysql.connector.Error as err:
@@ -522,6 +529,7 @@ def predict_price_page():
         if conn and conn.is_connected():
             conn.close()
     return render_template('predict_price.html', products=products)
+
 
 # ---------------- PRICE PREDICTION API ROUTE ----------------
 @app.route('/predict', methods=['POST'])
