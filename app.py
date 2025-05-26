@@ -158,10 +158,12 @@ def login():
     email = data.get('email')
     password = data.get('password')
 
+    print("ℹ️ User Login: Form data received:", request.form) # Log the entire form data
+
     if not all([email, password]):
         cursor.close()
         conn.close()
-        print("❌ User Login: Missing email or password.")
+        print(f"❌ User Login: Missing email ({email}) or password ({password}).")
         return redirect(url_for('login_page', error="Email and password are required."))
 
     user = None
@@ -210,10 +212,12 @@ def admin_login():
     email = data.get('email')
     password = data.get('password')
 
+    print("ℹ️ Admin Login: Form data received:", request.form) # Log the entire form data
+
     if not email or not password:
         cursor.close()
         conn.close()
-        print("❌ Admin Login: Missing email or password.")
+        print(f"❌ Admin Login: Missing email ({email}) or password ({password}).")
         return redirect(url_for('admin_login_page', error='Email and Password are required!'))
 
     admin_user = None
@@ -559,7 +563,7 @@ def predict():
             return jsonify({"error": "Enter correct date. Prediction date cannot be in the past."}), 400
     except ValueError:
         print("❌ Predict API: Invalid date format.")
-        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+        return jsonify({"error": "Invalid date format. Use THAT-MM-DD."}), 400
 
     if product not in models:
         print(f"❌ Predict API: No model found for product: {product}.")
