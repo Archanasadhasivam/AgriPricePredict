@@ -14,7 +14,7 @@ Prerequisites
 Python (implied by .py files and requirements.txt).
 PHP (implied by .php files).
 A database system (implied by .sql files).
-Clone the repository:git clone https://github.com/YourUsername/AgriPricePredict.git
+Clone the repository
 cd AgriPricePredict
 Install Python Dependencies:pip install -r requirements.txt
 Database Configuration:
