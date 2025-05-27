@@ -76,33 +76,12 @@
 <body>
     <div class="container">
         <h2>Predict Future Price</h2>
-        <form method="POST" action="{{ url_for('predict') }}">
+        <form method="POST" action="{{ url_for('predict_price') }}">
             <label for="product">Select Product:</label>
             <select id="product" name="product" required>
                 <option value="">-- Select Product --</option>
                 {% for product in products %}
-                    <option value="Onion">Onion</option>
-                    <option value="Potato">Potato</option>
-                    <option value="Tomato">Tomato</option>
-                    <option value="Rice">Rice</option>
-                    <option value="Wheat">Wheat</option>
-                    <option value="Atta (Wheat)">Atta (Wheat)</option>
-                    <option value="Gram Dal">Gram Dal</option>
-                    <option value="Tur/Arhar Dal">Tur/Arhar Dal</option>
-                    <option value="Urad Dal">Urad Dal</option>
-                    <option value="Moong Dal">Moong Dal</option>
-                    <option value="Masoor Dal">Masoor Dal</option>
-                    <option value="Groundnut Oil (Packed)">Groundnut Oil (Packed)</option>
-                    <option value="Mustard Oil (Packed)">Mustard Oil (Packed)</option>
-                    <option value="Vanaspati (Packed)">Vanaspati (Packed)</option>
-                    <option value="Soya Oil (Packed)">Soya Oil (Packed)</option>
-                    <option value="Sunflower Oil (Packed)">Sunflower Oil (Packed)</option>
-                    <option value="Palm Oil (Packed)">Palm Oil (Packed)</option>
-                    <option value="Sugar">Sugar</option>
-                    <option value="Gur">Gur</option>
-                    <option value="Milk">Milk</option>
-                    <option value="Tea Loose">Tea Loose</option>
-                    <option value="Salt Pack (Iodised)">Salt Pack (Iodised)</option>
+                    <option value="{{ product }}">{{ product|capitalize }}</option>
                 {% endfor %}
             </select>
 
@@ -114,8 +93,7 @@
 
         <p><b>Result:</b> <span id="result">{% if prediction_result %}Predicted Price: ₹{{ "{:.2f}".format(prediction_result) }}{% elif error_message %}{{ error_message }}{% else %}No Prediction Yet{% endif %}</span></p>
 
-        <a href="dashboard.html" class="back-link">Back</a>
+        <a href="{{ url_for('dashboard') }}" class="back-link">Back</a>
     </div>
 </body>
 </html>
-        
