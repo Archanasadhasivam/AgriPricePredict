@@ -112,10 +112,10 @@
         <p>This web application helps farmers, traders, and policymakers track market prices of agricultural and horticultural commodities like pulses and vegetables. It provides insights based on seasonality, production estimates, and past trends. The goal is to support better planning and help stabilize market fluctuations.</p>
 
         <div class="dashboard-actions">
-            <a href="alert_setting.html" class="set-alert-btn">Set Alert</a>
-            <a href="predict_price.html" class="predict-price-btn">Predict Price</a>
-            <a href="historical_price.html" class="view-trend-btn">View Price Trend</a>
-            <a href="loggedout.html" class="logout-btn">Logout</a>
+            <a href="{{ url_for('alert_settings_page') }}" class="set-alert-btn">Set Alert</a>
+            <a href="{{ url_for('predict_price_page') }}" class="predict-price-btn">Predict Price</a>
+            <a href="{{ url_for('historical_price_page') }}" class="view-trend-btn">View Price Trend</a>
+            <a href="{{ url_for('loggedout_page') }}" class="logout-btn">Logout</a>
         </div>
 
         <div class="alerts-section">
@@ -138,7 +138,7 @@
                     </tbody>
                 </table>
             {% else %}
-                <p class="no-alerts-message">You have no active price alerts. <a href="{{ url_for('alert_settings') }}">Set one now!</a></p>
+                <p class="no-alerts-message">You have no active price alerts. <a href="{{ url_for('alert_settings_page') }}">Set one now!</a></p>
             {% endif %}
         </div>
     </div>
