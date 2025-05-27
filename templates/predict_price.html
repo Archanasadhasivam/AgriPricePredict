@@ -71,12 +71,17 @@
         .back-link:hover {
             opacity: 0.9;
         }
+
+        .error-message {
+            color: red;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Predict Future Price</h2>
-        <form method="POST" action="{{ url_for('predict_price') }}">
+        <form id="predictionForm">
             <label for="product">Select Product:</label>
             <select id="product" name="product" required>
                 <option value="">-- Select Product --</option>
@@ -102,17 +107,104 @@
                 <option value="milk">Milk</option>
                 <option value="tea loose">Tea Loose</option>
                 <option value="salt pack (iodised)">Salt Pack (Iodised)</option>
+                {% if products %}
+                    {% for product in products %}
+                        <option value="{{ product }}">{{ product|capitalize }}</option>
+                    {% endfor %}
+                {% endif %}
             </select>
 
             <label for="date">Select Date:</label>
             <input type="date" id="date" name="date" required>
 
-            <button type="submit">Predict Price</button>
+            <button type="button" onclick="predictPrice()">Predict Price</button>
         </form>
 
-        <p><b>Result:</b> <span id="result">{% if prediction_result %}Predicted Price: ₹{{ "{:.2f}".format(prediction_result) }}{% elif error_message %}{{ error_message }}{% else %}No Prediction Yet{% endif %}</span></p>
+        <p><b>Result:</b> <span id="result">{% if prediction_result %}Predicted Price: ₹{{ "{:.2f}".format(prediction_result) }}{% else %}No Prediction Yet{% endif %}</span></p>
+        {% if error_message %}
+            <p class="error-message">{{ error_message }}</p>
+        {% endif %}
 
         <a href="{{ url_for('dashboard') }}" class="back-link">Back</a>
     </div>
+
+    <script>
+        async function predictPrice() {
+            const product = document.getElementById("product").value;
+            const date = document.getElementById("date").value;
+            const resultSpan = document.getElementById("result");
+            const form = document.getElementById("predictionForm");
+
+            if (!product) {
+                alert("Please select a product.");
+                return;
+            }
+
+            if (!date) {
+                alert("Please select a date.");
+                return;
+            }
+
+            const formData = {
+                product: product,
+                date: date
+            };
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    if (data.predicted_price !== undefined) {
+                        resultSpan.textContent = `Predicted Price: ₹${parseFloat(data.predicted_price).toFixed(2)}`;
+                        // Optionally, clear any previous error messages
+                        const errorMessage = document.querySelector('.error-message');
+                        if (errorMessage) {
+                            errorMessage.remove();
+                        }
+                    } else if (data.error) {
+                        resultSpan.textContent = "Error: " + data.error;
+                        // Optionally, display the error in a specific element
+                        let errorMessageElement = document.querySelector('.error-message');
+                        if (!errorMessageElement) {
+                            errorMessageElement = document.createElement('p');
+                            errorMessageElement.classList.add('error-message');
+                            form.parentNode.insertBefore(errorMessageElement, document.querySelector('.back-link'));
+                        }
+                        errorMessageElement.textContent = data.error;
+                    } else {
+                        resultSpan.textContent = "Prediction failed.";
+                    }
+                } else {
+                    resultSpan.textContent = `Error: ${data.error || 'Prediction failed due to a server error.'}`;
+                    let errorMessageElement = document.querySelector('.error-message');
+                    if (!errorMessageElement) {
+                        errorMessageElement = document.createElement('p');
+                        errorMessageElement.classList.add('error-message');
+                        form.parentNode.insertBefore(errorMessageElement, document.querySelector('.back-link'));
+                    }
+                    errorMessageElement.textContent = data.error || 'Prediction failed due to a server error.';
+                }
+
+            } catch (error) {
+                console.error("Error during prediction:", error);
+                resultSpan.textContent = "Error: Could not connect to the server.";
+                let errorMessageElement = document.querySelector('.error-message');
+                if (!errorMessageElement) {
+                    errorMessageElement = document.createElement('p');
+                    errorMessageElement.classList.add('error-message');
+                    form.parentNode.insertBefore(errorMessageElement, document.querySelector('.back-link'));
+                }
+                errorMessageElement.textContent = "Error: Could not connect to the server.";
+            }
+        }
+    </script>
 </body>
 </html>
