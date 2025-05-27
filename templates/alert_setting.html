@@ -93,7 +93,7 @@
             <p class="message">{{ message }}</p>
         {% endif %}
 
-        <form method="POST">
+        <form method="POST" action="{{ url_for('set_alert') }}">
             <label for="product">Select Product:</label>
             <select id="product" name="product" required>
                 {% for product in products %}
