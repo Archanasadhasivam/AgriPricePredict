@@ -52,7 +52,7 @@ def get_product_list():
     if not conn:
         logging.error("❌ get_product_list: Database connection failed.")
         return []
-    
+
     products = []
     try:
         cursor = conn.cursor(dictionary=True) # Use dictionary=True for easier access by column name
@@ -540,8 +540,8 @@ def get_price_trends():
     # This API endpoint does not require user_id in session as it's called via fetch from frontend
     # However, if you want to protect this API, uncomment the session check below:
     # if 'user_id' not in session:
-    #     logging.warning("❌ Price Trend API: User not logged in. Returning unauthorized JSON.")
-    #     return jsonify({"error": "Unauthorized. Please log in."}), 401
+    #    logging.warning("❌ Price Trend API: User not logged in. Returning unauthorized JSON.")
+    #    return jsonify({"error": "Unauthorized. Please log in."}), 401
 
     product = request.args.get('product_name')
     from_date_str = request.args.get('from_date')
@@ -568,7 +568,7 @@ def get_price_trends():
     cursor = conn.cursor()
     # Ensure product_name comparison is case-insensitive if your data or frontend has mixed case
     # For MySQL, you can use COLLATE utf8mb4_general_ci or LOWER() function
-    query = "SELECT date, price FROM historical_prices WHERE product_name=%s AND date BETWEEN %s AND %s ORDER BY date ASC"
+    query = "SELECT date, price FROM historical_prices WHERE LOWER(product_name)=LOWER(%s) AND date BETWEEN %s AND %s ORDER BY date ASC"
     results = []
     try:
         cursor.execute(query, (product, from_date_str, to_date_str))
@@ -583,8 +583,9 @@ def get_price_trends():
         logging.error(f"❌ Price Trend API: Database error: {e}")
         return jsonify({"error": f"Error fetching price trends: {str(e)}"}), 500
     finally:
-        cursor.close()
-        conn.close()
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
 
 # ---------------- PRICE PREDICTION PAGE ROUTE ----------------
 @app.route('/predict_price')
@@ -640,7 +641,7 @@ def predict():
         logging.error("❌ Predict API: Commodity data CSV not loaded properly.")
         return jsonify({"error": "Commodity data CSV not loaded properly."}), 500
 
-    product_data = df[df["Commodities"] == product]
+    product_data = df[df["Commodities"].str.lower() == product.lower()] # Case-insensitive match
     if product_data.empty:
         logging.warning(f"❌ Predict API: No historical data in CSV for product: {product}.")
         return jsonify({"error": "No historical data found in CSV for this product to make a prediction!"}), 400
@@ -683,7 +684,6 @@ def predict():
         logging.error(f"❌ Predict API: Error during prediction or DB save: {e}")
         if conn and conn.is_connected():
             conn.rollback() # Rollback if error occurred after connection
-            conn.close()
         return jsonify({"error": f"Error during prediction: {str(e)}"}), 500
     finally:
         # Ensure connection is closed even if not explicitly handled in try/except
