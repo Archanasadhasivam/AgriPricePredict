@@ -45,6 +45,29 @@ def get_db_connection():
         logging.error(f"❌ Database connection error (get_db_connection): {err}")
         return None
 
+# Helper function to get product list from DB
+def get_product_list():
+    """Fetches a distinct list of product names from the historical_prices table."""
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ get_product_list: Database connection failed.")
+        return []
+    
+    products = []
+    try:
+        cursor = conn.cursor(dictionary=True) # Use dictionary=True for easier access by column name
+        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
+        product_results = cursor.fetchall()
+        products = [row['product_name'] for row in product_results]
+        logging.info(f"✅ get_product_list: Fetched {len(products)} products.")
+    except mysql.connector.Error as err:
+        logging.error(f"❌ get_product_list: Database error fetching products: {err}")
+    finally:
+        if conn and conn.is_connected():
+            cursor.close()
+            conn.close()
+    return products
+
 # ✅ Load machine learning models
 models = {}
 try:
@@ -391,9 +414,8 @@ def alert_settings_page():
         alerts = cursor.fetchall()
         logging.info(f"✅ Alert Settings: Fetched {len(alerts)} alerts for user {user_id}.")
 
-        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
-        product_results = cursor.fetchall()
-        products = [row['product_name'] for row in product_results]
+        # Fetch products for the dropdown
+        products = get_product_list() # Use the helper function
         logging.info(f"✅ Alert Settings: Fetched {len(products)} products for dropdown.")
     except mysql.connector.Error as err:
         logging.error(f"❌ Alert Settings: Error fetching alerts or products: {err}")
@@ -419,8 +441,10 @@ def set_alert():
         session['alert_message'] = "Database connection failed."
         return redirect(url_for('alert_settings_page'))
 
-    product = request.form.get('product')
+    product = request.form.get('product') # Form uses standard POST, so request.form
     price = request.form.get('price')
+
+    logging.debug(f"ℹ️ Set Alert: Received product: {product}, price: {price}")
 
     if not product or not price:
         conn.close()
@@ -448,7 +472,7 @@ def set_alert():
             logging.info(f"✅ Alert for user {user_id}, product '{product}' set.")
         cursor.close()
     except ValueError:
-        session['alert_message'] = "Invalid price value."
+        session['alert_message'] = "Invalid price value. Price must be a number."
         logging.warning("❌ Set Alert: Invalid price value.")
     except mysql.connector.Error as err:
         conn.rollback()
@@ -506,25 +530,7 @@ def historical_price_page():
         logging.warning("❌ Historical Price: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
-    conn = get_db_connection()
-    if not conn:
-        logging.error("❌ Historical Price: Database connection failed.")
-        return "Database connection failed", 500
-
-    products = []
-    try:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
-        product_results = cursor.fetchall()
-        products = [row['product_name'] for row in product_results]
-        logging.info(f"✅ Historical Price: Fetched {len(products)} products for dropdown.")
-    except mysql.connector.Error as err:
-        logging.error(f"❌ Historical Price: Database error fetching products: {err}")
-    finally:
-        if conn and conn.is_connected():
-            cursor.close()
-            conn.close()
-
+    products = get_product_list() # Use the helper function
     return render_template('historical_price.html', products=products)
 
 # ---------------- HISTORICAL PRICE TRENDS API ROUTE ----------------
@@ -588,23 +594,7 @@ def predict_price_page():
         logging.warning("❌ Predict Price: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
-    conn = get_db_connection()
-    if not conn:
-        logging.error("❌ Predict Price: Database connection failed.")
-        return "Database connection failed", 500
-
-    products = []
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
-        product_results = cursor.fetchall()
-        products = [row[0] for row in product_results]
-        logging.info(f"✅ Predict Price: Fetched {len(products)} products for dropdown.")
-    except mysql.connector.Error as err:
-        logging.error(f"❌ Predict Price: Database error fetching products: {err}")
-    finally:
-        if conn and conn.is_connected():
-            conn.close()
+    products = get_product_list() # Use the helper function
     return render_template('predict_price.html', products=products)
 
 
