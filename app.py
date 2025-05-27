@@ -6,6 +6,10 @@ import joblib
 from datetime import datetime
 import os
 from werkzeug.security import generate_password_hash, check_password_hash
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = Flask(__name__)
 CORS(app)
@@ -15,7 +19,7 @@ CORS(app)
 # For production, set this as an environment variable in Render.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "a_very_secure_and_long_random_string_for_flask_session_keys_1234567890")
 
-# ✅ Database connection details from environment variables
+# ✅ Database connection details from environment variables (using Aiven details as per original request)
 # These should be set in your Render service environment variables.
 # The hardcoded values are for local testing/defaults if env vars are not set.
 db_host = os.environ.get("DB_HOST", "mysql-fc0e3b0-sadhasivamkanaga15-f154.l.aivencloud.com")
@@ -35,21 +39,21 @@ def get_db_connection():
             port=db_port
             # ssl_ca='path/to/your/aiven_ca.pem' # Uncomment and provide path if Aiven requires SSL CA file
         )
-        print("✅ Database connection established (get_db_connection).")
+        logging.info("✅ Database connection established (get_db_connection).")
         return conn
     except mysql.connector.Error as err:
-        print(f"❌ Database connection error (get_db_connection): {err}")
+        logging.error(f"❌ Database connection error (get_db_connection): {err}")
         return None
 
 # ✅ Load machine learning models
 models = {}
 try:
     models = joblib.load("models.pkl")
-    print("✅ Machine learning models loaded successfully.")
+    logging.info("✅ Machine learning models loaded successfully.")
 except FileNotFoundError:
-    print("⚠ Error: 'models.pkl' not found. Please run 'model.py' to train and save models.")
+    logging.warning("⚠ Error: 'models.pkl' not found. Please run 'model.py' to train and save models.")
 except Exception as e:
-    print(f"⚠ Error loading models: {e}")
+    logging.error(f"⚠ Error loading models: {e}")
 
 # ✅ Load commodity data from CSV
 df = pd.DataFrame() # Initialize as empty DataFrame
@@ -57,14 +61,14 @@ try:
     df = pd.read_csv("commodity_price.csv")
     df.columns = df.columns.str.strip() # Clean column names
     if "Commodities" in df.columns:
-        print("✅ Products loaded from CSV:", df["Commodities"].unique())
+        logging.info("✅ Products loaded from CSV: %s", df["Commodities"].unique())
     else:
-        print("❌ 'Commodities' column not found in 'commodity_price.csv'. Please check the CSV structure.")
+        logging.error("❌ 'Commodities' column not found in 'commodity_price.csv'. Please check the CSV structure.")
         df = pd.DataFrame() # Ensure df is empty if column is missing
 except FileNotFoundError:
-    print("❌ Error: 'commodity_price.csv' not found.")
+    logging.error("❌ Error: 'commodity_price.csv' not found.")
 except Exception as e:
-    print(f"❌ Error loading commodity data from CSV: {e}")
+    logging.error(f"❌ Error loading commodity data from CSV: {e}")
     df = pd.DataFrame()
 
 # ---------------- HOME ROUTE ----------------
@@ -93,23 +97,23 @@ def register():
     """Handles new user registration."""
     conn = get_db_connection()
     if not conn:
-        print("❌ Register: Database connection failed (at the beginning of route).")
-        return redirect(url_for('signup_page', error="Database connection failed. Please try again later."))
+        logging.error("❌ Register: Database connection failed (at the beginning of route).")
+        return jsonify({"status": "error", "message": "Database connection failed. Please try again later."}), 500
 
     cursor = conn.cursor()
-    data = request.form # Data from HTML form submission
+    data = request.form # Assuming signup form still uses standard form submission
     username = data.get('username')
     email = data.get('email')
     password = data.get('password')
 
-    print("ℹ️ Register: Form data received:", data)
-    print(f"ℹ️ Register: Username: '{username}', Email: '{email}', Password (length): {len(password) if password else 0}")
+    logging.debug("ℹ️ Register: Form data received: %s", data)
+    logging.info(f"ℹ️ Register: Attempting to register Username: '{username}', Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not all([username, email, password]):
         cursor.close()
         conn.close()
-        print("❌ Register: Missing required fields.")
-        return redirect(url_for('signup_page', error="All fields are required."))
+        logging.warning("❌ Register: Missing required fields.")
+        return jsonify({"status": "error", "message": "All fields are required."}), 400
 
     # Check if email already exists before attempting insert
     try:
@@ -118,40 +122,41 @@ def register():
         if existing_user:
             cursor.close()
             conn.close()
-            print(f"❌ Register: Email '{email}' already registered.")
-            return redirect(url_for('signup_page', error="Email address is already registered. Please use a different email."))
+            logging.warning(f"❌ Register: Email '{email}' already registered.")
+            return jsonify({"status": "error", "message": "Email address is already registered. Please use a different email."}), 409 # 409 Conflict
     except mysql.connector.Error as err:
         cursor.close()
         conn.close()
-        print(f"❌ Register: Database error checking for existing email: {err}")
-        return redirect(url_for('signup_page', error=f"Registration failed: Database error checking email. {str(err)}"))
+        logging.error(f"❌ Register: Database error checking for existing email: {err}")
+        return jsonify({"status": "error", "message": f"Registration failed: Database error checking email. {str(err)}"}), 500
 
 
     hashed_password = generate_password_hash(password)
-    print(f"ℹ️ Register: Hashed password generated: '{hashed_password[:20]}...'") # Log a snippet
+    logging.info(f"ℹ️ Register: Hashed password generated: '{hashed_password[:20]}...'") # Log a snippet
 
     query = "INSERT INTO users (username, email, password) VALUES (%s, %s, %s)"
     try:
         cursor.execute(query, (username, email, hashed_password))
         conn.commit()
-        print("✅ Register: User data committed to database.")
+        logging.info("✅ Register: User data committed to database.")
         cursor.close()
         conn.close()
         session['registration_success'] = "Registration successful! You can now log in."
-        print(f"✅ User '{email}' registered successfully.")
+        logging.info(f"✅ User '{email}' registered successfully. Redirecting to login page.")
+        # For register, still redirect to login page as per previous logic, but ensure frontend handles it
         return redirect(url_for('login_page'))
     except mysql.connector.Error as err: # Catch specific MySQL errors
         conn.rollback()
         cursor.close()
         conn.close()
-        print(f"❌ Register error (mysql.connector.Error during insert): {err}")
-        return redirect(url_for('signup_page', error=f"Registration failed due to database error: {str(err)}"))
+        logging.error(f"❌ Register error (mysql.connector.Error during insert): {err}")
+        return jsonify({"status": "error", "message": f"Registration failed due to database error: {str(err)}"}), 500
     except Exception as e: # Catch any other unexpected errors
         conn.rollback()
         cursor.close()
         conn.close()
-        print(f"❌ Register error (General Exception during insert): {e}")
-        return redirect(url_for('signup_page', error=f"Registration failed due to an unexpected error: {str(e)}"))
+        logging.error(f"❌ Register error (General Exception during insert): {e}")
+        return jsonify({"status": "error", "message": f"Registration failed due to an unexpected error: {str(e)}"}), 500
 
 # ---------------- LOGIN PAGE ROUTE ----------------
 @app.route('/login.html')
@@ -165,35 +170,32 @@ def login_page():
 @app.route('/login', methods=['POST'])
 def login():
     """Handles user login authentication."""
-    conn = get_db_connection()
-    if not conn:
-        print("❌ User Login: Database connection failed.")
-        return redirect(url_for('login_page', error="Database connection failed. Please try again later."))
-
-    cursor = conn.cursor()
-    data = request.form # Data from HTML form submission
+    # IMPORTANT: Change from request.form to request.json as frontend sends JSON
+    data = request.json
     email = data.get('email')
     password = data.get('password')
 
-    print("ℹ️ User Login: Form data received:", request.form) # Log the entire form data
-    print(f"ℹ️ User Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
+    logging.debug("ℹ️ User Login: JSON data received: %s", data)
+    logging.info(f"ℹ️ User Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not all([email, password]):
-        cursor.close()
-        conn.close()
-        print(f"❌ User Login: Missing email ({email}) or password ({password}).")
-        return redirect(url_for('login_page', error="Email and password are required."))
+        logging.warning(f"❌ User Login: Missing email ({email}) or password ({password}).")
+        return jsonify({"status": "error", "message": "Email and password are required."}), 400
 
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ User Login: Database connection failed.")
+        return jsonify({"status": "error", "message": "Database connection failed. Please try again later."}), 500
+
+    cursor = conn.cursor()
     user = None
     try:
         cursor.execute("SELECT id, email, password, username FROM users WHERE email=%s", (email,))
         user = cursor.fetchone()
-        print(f"ℹ️ User Login: Query executed. User found: {user is not None}")
+        logging.info(f"ℹ️ User Login: Query executed. User found: {user is not None}")
     except mysql.connector.Error as err:
-        print(f"❌ User Login: Database query error: {err}")
-        cursor.close()
-        conn.close()
-        return redirect(url_for('login_page', error="An error occurred during login."))
+        logging.error(f"❌ User Login: Database query error: {err}")
+        return jsonify({"status": "error", "message": "An error occurred during login."}), 500
     finally:
         if conn and conn.is_connected():
             cursor.close()
@@ -201,86 +203,85 @@ def login():
 
     if user:
         user_id, user_email, hashed_password_from_db, username = user
-        print(f"ℹ️ User Login: Retrieved user - ID: {user_id}, Email: {user_email}")
-        print(f"ℹ️ User Login: Checking password hash for provided password against '{hashed_password_from_db[:20]}...'") # Log a snippet of the hash
+        logging.info(f"ℹ️ User Login: Retrieved user - ID: {user_id}, Email: {user_email}")
+        logging.info(f"ℹ️ User Login: Checking password hash for provided password against '{hashed_password_from_db[:20]}...'") # Log a snippet
         if check_password_hash(hashed_password_from_db, password):
             session['user_email'] = user_email
             session['user_id'] = user_id
             session['username'] = username
-            print(f"✅ User '{user_email}' logged in successfully. Redirecting to dashboard.")
-            return redirect(url_for('dashboard'))
+            logging.info(f"✅ User '{user_email}' logged in successfully. Redirecting to dashboard.")
+            # Return JSON for success, frontend will handle redirect
+            return jsonify({"status": "success", "redirect": url_for('dashboard')}), 200
         else:
-            print(f"❌ User Login: Invalid password for '{email}'.")
-            return redirect(url_for('login_page', error="Invalid credentials!"))
+            logging.warning(f"❌ User Login: Invalid password for '{email}'.")
+            return jsonify({"status": "error", "message": "Invalid credentials!"}), 401
     else:
-        print(f"❌ User Login: User '{email}' not found.")
-        return redirect(url_for('login_page', error="Invalid credentials!"))
+        logging.warning(f"❌ User Login: User '{email}' not found.")
+        return jsonify({"status": "error", "message": "Invalid credentials!"}), 401
 
 # ---------------- ADMIN LOGIN API ROUTE ----------------
 @app.route('/admin_login', methods=['POST'])
 def admin_login():
     """Handles admin login authentication."""
-    conn = get_db_connection()
-    if not conn:
-        print("❌ Admin Login: Database connection failed.")
-        return redirect(url_for('admin_login_page', error='Database connection failed. Please try again later.'))
-
-    cursor = conn.cursor(dictionary=True) # Use dictionary=True for easier access by column name
-    data = request.form # Data from HTML form submission
+    # Assuming admin login also uses JSON submission from frontend
+    data = request.json # Changed from request.form to request.json
     email = data.get('email')
     password = data.get('password')
 
-    print("ℹ️ Admin Login: Form data received:", request.form) # Log the entire form data
-    print(f"ℹ️ Admin Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
+    logging.debug("ℹ️ Admin Login: JSON data received: %s", data)
+    logging.info(f"ℹ️ Admin Login: Attempting login for Email: '{email}', Password (length): {len(password) if password else 0}")
 
     if not email or not password:
-        cursor.close()
-        conn.close()
-        print(f"❌ Admin Login: Missing email ({email}) or password ({password}).")
-        return redirect(url_for('admin_login_page', error='Email and Password are required!'))
+        logging.warning(f"❌ Admin Login: Missing email ({email}) or password ({password}).")
+        return jsonify({"status": "error", "message": "Email and Password are required!"}), 400
 
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ Admin Login: Database connection failed.")
+        return jsonify({"status": "error", "message": "Database connection failed. Please try again later."}), 500
+
+    cursor = conn.cursor(dictionary=True) # Use dictionary=True for easier access by column name
     admin_user = None
     try:
         cursor.execute("SELECT id, email, password FROM admin_users WHERE email = %s", (email,))
         admin_user = cursor.fetchone()
-        print(f"ℹ️ Admin Login: Query executed. Admin user found: {admin_user is not None}")
+        logging.info(f"ℹ️ Admin Login: Query executed. Admin user found: {admin_user is not None}")
     except mysql.connector.Error as err:
-        print(f"❌ Admin Login: Database query error: {err}")
-        cursor.close()
-        conn.close()
-        return redirect(url_for('admin_login_page', error="An error occurred during admin login."))
+        logging.error(f"❌ Admin Login: Database query error: {err}")
+        return jsonify({"status": "error", "message": "An error occurred during admin login."}), 500
     finally:
         if conn and conn.is_connected():
             cursor.close()
             conn.close()
 
     if admin_user:
-        print(f"ℹ️ Admin Login: Retrieved admin user - ID: {admin_user['id']}, Email: {admin_user['email']}")
-        print(f"ℹ️ Admin Login: Checking password hash for provided password against '{admin_user['password'][:20]}...'") # Log a snippet
+        logging.info(f"ℹ️ Admin Login: Retrieved admin user - ID: {admin_user['id']}, Email: {admin_user['email']}")
+        logging.info(f"ℹ️ Admin Login: Checking password hash for provided password against '{admin_user['password'][:20]}...'") # Log a snippet
         if check_password_hash(admin_user['password'], password):
             session['admin_id'] = admin_user['id']
             session['admin_email'] = admin_user['email']
             session['is_admin'] = True
-            print(f"✅ Admin '{email}' logged in successfully. Redirecting to admin dashboard.")
-            return redirect(url_for('admin_dashboard'))
+            logging.info(f"✅ Admin '{email}' logged in successfully. Redirecting to admin dashboard.")
+            # Return JSON for success, frontend will handle redirect
+            return jsonify({"status": "success", "redirect": url_for('admin_dashboard')}), 200
         else:
-            print(f"❌ Admin Login: Invalid password for admin '{email}'.")
-            return redirect(url_for('admin_login_page', error='Invalid admin credentials!'))
+            logging.warning(f"❌ Admin Login: Invalid password for admin '{email}'.")
+            return jsonify({"status": "error", "message": "Invalid admin credentials!"}), 401
     else:
-        print(f"❌ Admin Login: Admin user '{email}' not found.")
-        return redirect(url_for('admin_login_page', error='Invalid admin credentials!'))
+        logging.warning(f"❌ Admin Login: Admin user '{email}' not found.")
+        return jsonify({"status": "error", "message": "Invalid admin credentials!"}), 401
 
 # ---------------- DASHBOARD ROUTE ----------------
 @app.route('/dashboard')
 def dashboard():
     """Renders the user dashboard, requires user to be logged in."""
     if 'user_id' not in session:
-        print("❌ Dashboard: User not logged in. Redirecting to login.")
+        logging.warning("❌ Dashboard: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
     conn = get_db_connection()
     if not conn:
-        print("❌ Dashboard: Database connection failed.")
+        logging.error("❌ Dashboard: Database connection failed.")
         return "Database connection failed", 500
 
     cursor = conn.cursor(dictionary=True)
@@ -291,9 +292,9 @@ def dashboard():
     try:
         cursor.execute("SELECT id, product_name, alert_price FROM price_alerts WHERE user_id = %s", (session['user_id'],))
         alerts = cursor.fetchall()
-        print(f"✅ Dashboard: Fetched {len(alerts)} alerts for user {session['user_id']}.")
+        logging.info(f"✅ Dashboard: Fetched {len(alerts)} alerts for user {session['user_id']}.")
     except mysql.connector.Error as err:
-        print(f"❌ Dashboard: Error fetching alerts: {err}")
+        logging.error(f"❌ Dashboard: Error fetching alerts: {err}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
@@ -306,12 +307,12 @@ def dashboard():
 def admin_dashboard():
     """Renders the admin dashboard, requires admin to be logged in."""
     if 'is_admin' not in session or not session['is_admin']:
-        print("❌ Admin Dashboard: Admin not logged in. Redirecting to admin login.")
+        logging.warning("❌ Admin Dashboard: Admin not logged in. Redirecting to admin login.")
         return redirect(url_for('admin_login_page'))
 
     conn = get_db_connection()
     if not conn:
-        print("❌ Admin Dashboard: Database connection failed.")
+        logging.error("❌ Admin Dashboard: Database connection failed.")
         return "Database connection failed", 500
 
     users = []
@@ -319,9 +320,9 @@ def admin_dashboard():
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT id, username, email FROM users")
         users = cursor.fetchall()
-        print(f"✅ Admin Dashboard: Fetched {len(users)} users.")
+        logging.info(f"✅ Admin Dashboard: Fetched {len(users)} users.")
     except mysql.connector.Error as err:
-        print(f"❌ Admin Dashboard: Database error fetching users: {err}")
+        logging.error(f"❌ Admin Dashboard: Database error fetching users: {err}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
@@ -334,14 +335,14 @@ def admin_dashboard():
 def delete_user(user_id):
     """Handles deletion of a user by an admin."""
     if 'is_admin' not in session or not session['is_admin']:
-        print("❌ Delete User: Admin not logged in. Redirecting to admin login.")
+        logging.warning("❌ Delete User: Admin not logged in. Redirecting to admin login.")
         return redirect(url_for('admin_login_page'))
 
     conn = get_db_connection()
     if not conn:
         session['message'] = "Database connection failed.";
         session['message_type'] = 'danger';
-        print("❌ Delete User: Database connection failed.")
+        logging.error("❌ Delete User: Database connection failed.")
         return redirect(url_for('admin_dashboard'))
 
     try:
@@ -353,18 +354,18 @@ def delete_user(user_id):
         conn.close()
         session['message'] = "User deleted successfully.";
         session['message_type'] = 'success';
-        print(f"✅ User ID {user_id} deleted by admin.")
+        logging.info(f"✅ User ID {user_id} deleted by admin.")
     except mysql.connector.Error as err:
         conn.rollback()
         cursor.close()
         conn.close()
         session['message'] = f"Error deleting user: {err}";
         session['message_type'] = 'danger';
-        print(f"❌ Delete User: Database error deleting user {user_id}: {err}")
+        logging.error(f"❌ Delete User: Database error deleting user {user_id}: {err}")
     except Exception as e:
         session['message'] = f"An unexpected error occurred: {e}";
         session['message_type'] = 'danger';
-        print(f"❌ Delete User: General error deleting user {user_id}: {e}")
+        logging.error(f"❌ Delete User: General error deleting user {user_id}: {e}")
 
     return redirect(url_for('admin_dashboard'))
 
@@ -373,13 +374,13 @@ def delete_user(user_id):
 def alert_settings_page():
     """Renders the alert settings page, requires user to be logged in."""
     if 'user_id' not in session:
-        print("❌ Alert Settings: User not logged in. Redirecting to login.")
+        logging.warning("❌ Alert Settings: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
     user_id = session['user_id']
     conn = get_db_connection()
     if not conn:
-        print("❌ Alert Settings: Database connection failed.")
+        logging.error("❌ Alert Settings: Database connection failed.")
         return "Database connection failed", 500
 
     alerts = []
@@ -388,14 +389,14 @@ def alert_settings_page():
         cursor = conn.cursor(dictionary=True)
         cursor.execute("SELECT id, product_name, alert_price FROM price_alerts WHERE user_id = %s", (user_id,))
         alerts = cursor.fetchall()
-        print(f"✅ Alert Settings: Fetched {len(alerts)} alerts for user {user_id}.")
+        logging.info(f"✅ Alert Settings: Fetched {len(alerts)} alerts for user {user_id}.")
 
         cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
         product_results = cursor.fetchall()
         products = [row['product_name'] for row in product_results]
-        print(f"✅ Alert Settings: Fetched {len(products)} products for dropdown.")
+        logging.info(f"✅ Alert Settings: Fetched {len(products)} products for dropdown.")
     except mysql.connector.Error as err:
-        print(f"❌ Alert Settings: Error fetching alerts or products: {err}")
+        logging.error(f"❌ Alert Settings: Error fetching alerts or products: {err}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
@@ -408,13 +409,13 @@ def alert_settings_page():
 def set_alert():
     """Handles setting or updating a price alert for a user."""
     if 'user_id' not in session:
-        print("❌ Set Alert: User not logged in. Returning unauthorized.")
+        logging.warning("❌ Set Alert: User not logged in. Returning unauthorized.")
         return jsonify({"error": "Unauthorized. Please log in."}), 401
 
     user_id = session['user_id']
     conn = get_db_connection()
     if not conn:
-        print("❌ Set Alert: Database connection failed.")
+        logging.error("❌ Set Alert: Database connection failed.")
         session['alert_message'] = "Database connection failed."
         return redirect(url_for('alert_settings_page'))
 
@@ -424,7 +425,7 @@ def set_alert():
     if not product or not price:
         conn.close()
         session['alert_message'] = "Please fill in all fields!"
-        print("❌ Set Alert: Missing product or price.")
+        logging.warning("❌ Set Alert: Missing product or price.")
         return redirect(url_for('alert_settings_page'))
 
     try:
@@ -438,23 +439,23 @@ def set_alert():
             cursor.execute(update_query, (price, existing_alert[0]))
             conn.commit()
             session['alert_message'] = "Alert updated successfully!"
-            print(f"✅ Alert for user {user_id}, product '{product}' updated.")
+            logging.info(f"✅ Alert for user {user_id}, product '{product}' updated.")
         else:
             insert_query = "INSERT INTO price_alerts (user_id, product_name, alert_price) VALUES (%s, %s, %s)"
             cursor.execute(insert_query, (user_id, product, price))
             conn.commit()
             session['alert_message'] = "Alert set successfully!"
-            print(f"✅ Alert for user {user_id}, product '{product}' set.")
+            logging.info(f"✅ Alert for user {user_id}, product '{product}' set.")
         cursor.close()
     except ValueError:
         session['alert_message'] = "Invalid price value."
-        print("❌ Set Alert: Invalid price value.")
+        logging.warning("❌ Set Alert: Invalid price value.")
     except mysql.connector.Error as err:
         conn.rollback()
-        print(f"❌ Set Alert: Database error setting alert: {err}")
+        logging.error(f"❌ Set Alert: Database error setting alert: {err}")
         session['alert_message'] = f"Error setting alert: {err}"
     except Exception as e:
-        print(f"❌ Set Alert: General error setting alert: {e}")
+        logging.error(f"❌ Set Alert: General error setting alert: {e}")
         session['alert_message'] = f"An unexpected error occurred: {e}"
     finally:
         if conn and conn.is_connected():
@@ -467,14 +468,14 @@ def set_alert():
 def delete_alert(alert_id):
     """Handles deletion of a price alert."""
     if 'user_id' not in session:
-        print("❌ Delete Alert: User not logged in. Redirecting to login.")
+        logging.warning("❌ Delete Alert: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
     user_id = session['user_id']
     conn = get_db_connection()
     if not conn:
         session['alert_message'] = "Database connection failed."
-        print("❌ Delete Alert: Database connection failed.")
+        logging.error("❌ Delete Alert: Database connection failed.")
         return redirect(url_for('alert_settings_page'))
 
     try:
@@ -484,13 +485,13 @@ def delete_alert(alert_id):
         conn.commit()
         cursor.close()
         session['alert_message'] = "Alert deleted successfully!"
-        print(f"✅ Alert ID {alert_id} deleted for user {user_id}.")
+        logging.info(f"✅ Alert ID {alert_id} deleted for user {user_id}.")
     except mysql.connector.Error as err:
         conn.rollback()
-        print(f"❌ Delete Alert: Database error deleting alert: {err}")
+        logging.error(f"❌ Delete Alert: Database error deleting alert: {err}")
         session['alert_message'] = f"Error deleting alert: {err}"
     except Exception as e:
-        print(f"❌ Delete Alert: General error deleting alert: {e}")
+        logging.error(f"❌ Delete Alert: General error deleting alert: {e}")
         session['alert_message'] = f"An unexpected error occurred: {e}"
     finally:
         if conn and conn.is_connected():
@@ -502,12 +503,12 @@ def delete_alert(alert_id):
 def historical_price_page():
     """Renders the historical price trends page, requires user to be logged in."""
     if 'user_id' not in session:
-        print("❌ Historical Price: User not logged in. Redirecting to login.")
+        logging.warning("❌ Historical Price: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
     conn = get_db_connection()
     if not conn:
-        print("❌ Historical Price: Database connection failed.")
+        logging.error("❌ Historical Price: Database connection failed.")
         return "Database connection failed", 500
 
     products = []
@@ -516,9 +517,9 @@ def historical_price_page():
         cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
         product_results = cursor.fetchall()
         products = [row['product_name'] for row in product_results]
-        print(f"✅ Historical Price: Fetched {len(products)} products for dropdown.")
+        logging.info(f"✅ Historical Price: Fetched {len(products)} products for dropdown.")
     except mysql.connector.Error as err:
-        print(f"❌ Historical Price: Database error fetching products: {err}")
+        logging.error(f"❌ Historical Price: Database error fetching products: {err}")
     finally:
         if conn and conn.is_connected():
             cursor.close()
@@ -526,17 +527,70 @@ def historical_price_page():
 
     return render_template('historical_price.html', products=products)
 
+# ---------------- HISTORICAL PRICE TRENDS API ROUTE ----------------
+@app.route('/price_trend', methods=['GET'])
+def get_price_trends():
+    """Fetches historical price trends for a given product and date range."""
+    # This API endpoint does not require user_id in session as it's called via fetch from frontend
+    # However, if you want to protect this API, uncomment the session check below:
+    # if 'user_id' not in session:
+    #     logging.warning("❌ Price Trend API: User not logged in. Returning unauthorized JSON.")
+    #     return jsonify({"error": "Unauthorized. Please log in."}), 401
+
+    product = request.args.get('product_name')
+    from_date_str = request.args.get('from_date')
+    to_date_str = request.args.get('to_date')
+
+    logging.debug(f"ℹ️ Price Trend API: Received product: {product}, from_date: {from_date_str}, to_date: {to_date_str}")
+
+    if not product or not from_date_str or not to_date_str:
+        logging.warning("❌ Price Trend API: Missing product_name, from_date, or to_date.")
+        return jsonify({"error": "Please provide product_name, from_date, and to_date."}), 400
+
+    try:
+        datetime.strptime(from_date_str, '%Y-%m-%d').date()
+        datetime.strptime(to_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        logging.warning("❌ Price Trend API: Invalid date format.")
+        return jsonify({"error": "Invalid date format. Use %Y-%m-%d."}), 400
+
+    conn = get_db_connection()
+    if not conn:
+        logging.error("❌ Price Trend API: Database connection failed.")
+        return jsonify({"error": "Database connection failed."}), 500
+
+    cursor = conn.cursor()
+    # Ensure product_name comparison is case-insensitive if your data or frontend has mixed case
+    # For MySQL, you can use COLLATE utf8mb4_general_ci or LOWER() function
+    query = "SELECT date, price FROM historical_prices WHERE product_name=%s AND date BETWEEN %s AND %s ORDER BY date ASC"
+    results = []
+    try:
+        cursor.execute(query, (product, from_date_str, to_date_str))
+        db_results = cursor.fetchall()
+        logging.debug(f"ℹ️ Price Trend API: Number of results found: {len(db_results)}")
+        results = [{"date": row[0].strftime('%Y-%m-%d'), "price": float(row[1])} for row in db_results]
+        if not results:
+            logging.info("ℹ️ Price Trend API: No data found for the given criteria.")
+            return jsonify({"message": "No price data found for the selected product and date range."}), 200
+        return jsonify(results)
+    except mysql.connector.Error as e:
+        logging.error(f"❌ Price Trend API: Database error: {e}")
+        return jsonify({"error": f"Error fetching price trends: {str(e)}"}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
 # ---------------- PRICE PREDICTION PAGE ROUTE ----------------
 @app.route('/predict_price')
 def predict_price_page():
     """Renders the price prediction page, requires user to be logged in."""
     if 'user_id' not in session:
-        print("❌ Predict Price: User not logged in. Redirecting to login.")
+        logging.warning("❌ Predict Price: User not logged in. Redirecting to login.")
         return redirect(url_for('login_page'))
 
     conn = get_db_connection()
     if not conn:
-        print("❌ Predict Price: Database connection failed.")
+        logging.error("❌ Predict Price: Database connection failed.")
         return "Database connection failed", 500
 
     products = []
@@ -545,9 +599,9 @@ def predict_price_page():
         cursor.execute("SELECT DISTINCT product_name FROM historical_prices ORDER BY product_name ASC")
         product_results = cursor.fetchall()
         products = [row[0] for row in product_results]
-        print(f"✅ Predict Price: Fetched {len(products)} products for dropdown.")
+        logging.info(f"✅ Predict Price: Fetched {len(products)} products for dropdown.")
     except mysql.connector.Error as err:
-        print(f"❌ Predict Price: Database error fetching products: {err}")
+        logging.error(f"❌ Predict Price: Database error fetching products: {err}")
     finally:
         if conn and conn.is_connected():
             conn.close()
@@ -559,53 +613,57 @@ def predict_price_page():
 def predict():
     """Handles price prediction requests."""
     if 'user_id' not in session:
-        print("❌ Predict API: User not logged in. Returning unauthorized JSON.")
+        logging.warning("❌ Predict API: User not logged in. Returning unauthorized JSON.")
         return jsonify({"error": "Unauthorized. Please log in."}), 401
 
     if not models:
-        print("❌ Predict API: Prediction models not loaded.")
+        logging.warning("❌ Predict API: Prediction models not loaded.")
         return jsonify({"error": "Prediction models are not loaded. Please ensure 'models.pkl' exists and was trained."}), 503
 
-    data = request.form # Data from HTML form submission
+    # Assuming prediction form also uses JSON submission from frontend
+    data = request.json # Changed from request.form to request.json
     product = data.get('product')
     date_str = data.get('date')
 
+    logging.debug("ℹ️ Predict API: JSON data received: %s", data)
+    logging.info(f"ℹ️ Predict API: Attempting prediction for Product: '{product}', Date: '{date_str}'")
+
     if not all([product, date_str]):
-        print("❌ Predict API: Missing product or date.")
+        logging.warning("❌ Predict API: Missing product or date.")
         return jsonify({"error": "Product and date are required for prediction."}), 400
 
     try:
         input_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         today = datetime.today().date()
         if input_date < today:
-            print("❌ Predict API: Prediction date in the past.")
+            logging.warning("❌ Predict API: Prediction date in the past.")
             return jsonify({"error": "Enter correct date. Prediction date cannot be in the past."}), 400
     except ValueError:
-        print("❌ Predict API: Invalid date format.")
+        logging.warning("❌ Predict API: Invalid date format.")
         return jsonify({"error": "Invalid date format. Use %Y-%m-%d."}), 400
 
     if product not in models:
-        print(f"❌ Predict API: No model found for product: {product}.")
+        logging.warning(f"❌ Predict API: No model found for product: {product}.")
         return jsonify({"error": f"No prediction model found for product: {product}. Please ensure the model was trained."}), 400
 
     if df.empty or "Commodities" not in df.columns:
-        print("❌ Predict API: Commodity data CSV not loaded properly.")
+        logging.error("❌ Predict API: Commodity data CSV not loaded properly.")
         return jsonify({"error": "Commodity data CSV not loaded properly."}), 500
 
     product_data = df[df["Commodities"] == product]
     if product_data.empty:
-        print(f"❌ Predict API: No historical data in CSV for product: {product}.")
+        logging.warning(f"❌ Predict API: No historical data in CSV for product: {product}.")
         return jsonify({"error": "No historical data found in CSV for this product to make a prediction!"}), 400
 
     price_columns = [col for col in df.columns if '-' in col and len(col.split('-')[1]) == 2]
     if not price_columns:
-        print("❌ Predict API: Not enough price data columns in CSV for prediction.")
+        logging.error("❌ Predict API: Not enough price data columns in CSV for prediction.")
         return jsonify({"error": "Not enough price data columns in the CSV for prediction!"}), 400
 
     latest_price_col = price_columns[-1]
 
     if latest_price_col not in product_data.columns or pd.isna(product_data[latest_price_col].iloc[0]):
-        print(f"❌ Predict API: Latest price data not available in CSV for {product}.")
+        logging.warning(f"❌ Predict API: Latest price data not available in CSV for {product}.")
         return jsonify({"error": f"Latest price data not available in CSV for {product} to make a prediction."}), 400
 
     latest_price = product_data[latest_price_col].iloc[0]
@@ -616,7 +674,7 @@ def predict():
         model = models[product]
         predicted_price = model.predict(prediction_input)[0]
         predicted_price_mysql = float(round(predicted_price, 2))
-        print(f"✅ Predict API: Predicted price for {product} on {date_str}: {predicted_price_mysql}")
+        logging.info(f"✅ Predict API: Predicted price for {product} on {date_str}: {predicted_price_mysql}")
 
         conn = get_db_connection()
         if conn:
@@ -625,14 +683,14 @@ def predict():
             cursor.execute(query, (product, predicted_price_mysql, date_str))
             conn.commit()
             cursor.close()
-            print("✅ Predict API: Prediction saved to database.")
+            logging.info("✅ Predict API: Prediction saved to database.")
             return jsonify({"predicted_price": predicted_price_mysql})
         else:
-            print("⚠ Predict API: Could not save prediction to database (DB connection failed).")
+            logging.warning("⚠ Predict API: Could not save prediction to database (DB connection failed).")
             return jsonify({"predicted_price": predicted_price_mysql, "warning": "Could not save prediction to database."}), 200
 
     except Exception as e:
-        print(f"❌ Predict API: Error during prediction or DB save: {e}")
+        logging.error(f"❌ Predict API: Error during prediction or DB save: {e}")
         if conn and conn.is_connected():
             conn.rollback() # Rollback if error occurred after connection
             conn.close()
@@ -653,7 +711,7 @@ def logout():
     session.pop('admin_id', None) # Clear admin session if exists
     session.pop('admin_email', None)
     session.pop('is_admin', None)
-    print("✅ User logged out. Clearing session.")
+    logging.info("✅ User logged out. Clearing session.")
     return redirect(url_for('loggedout_page'))
 
 # ---------------- LOGGED OUT PAGE ROUTE ----------------
@@ -664,7 +722,7 @@ def loggedout_page():
 
 # ---------------- RUN THE FLASK APPLICATION ----------------
 if __name__ == "__main__":
-    print("✅ Starting Flask app...")
+    logging.info("✅ Starting Flask app...")
     # Render sets the PORT environment variable. Use it if available.
     port = int(os.environ.get("PORT", 5000))
     app.run(debug=True, host='0.0.0.0', port=port)
