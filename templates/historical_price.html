@@ -47,6 +47,11 @@
             <option value="milk">Milk</option>
             <option value="tea loose">Tea Loose</option>
             <option value="salt pack (iodised)">Salt Pack (Iodised)</option>
+            {% if products %}
+                {% for product in products %}
+                    <option value="{{ product }}">{{ product|capitalize }}</option>
+                {% endfor %}
+            {% endif %}
         </select>
 
         <label for="fromDate">From:</label>
@@ -79,6 +84,11 @@
             const toDate = document.getElementById("toDate").value;
             const resultTableBody = document.getElementById("resultTable").getElementsByTagName('tbody')[0];
 
+            if (!product) {
+                alert("Please select a product.");
+                return;
+            }
+
             if (!fromDate || !toDate) {
                 alert("Please select both dates.");
                 return;
@@ -90,6 +100,13 @@
                     resultTableBody.innerHTML = ""; // Clear previous results
                     if (data.error) {
                         alert(data.error);
+                        return;
+                    }
+                    if (data.message) {
+                        let row = resultTableBody.insertRow();
+                        let noDataCell = row.insertCell();
+                        noDataCell.colSpan = 2;
+                        noDataCell.textContent = data.message;
                         return;
                     }
                     data.forEach(item => {
